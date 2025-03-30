@@ -40,6 +40,9 @@ export default function Home() {
   const [sentMessageIds] = useState<Set<string>>(new Set());
   // Track Slack timestamps for messages we've sent
   const [slackTimestamps] = useState<Set<string>>(new Set());
+  // User's dedicated Slack channel
+  const [userChannel, setUserChannel] = useState<string | null>(null);
+  const [userChannelName, setUserChannelName] = useState<string | null>(null);
 
   useEffect(() => {
     localStorage.setItem("chat-messages", JSON.stringify(messages));
@@ -162,6 +165,11 @@ export default function Home() {
         ...message,
         isFromSlack: true,
       };
+
+      // If this message has a target user and it's not for the current user, tag it
+      if (message.targetUser && message.targetUser !== username) {
+        slackMessage.text = `[To ${message.targetUser}] ${slackMessage.text}`;
+      }
 
       // Add the Slack message to our state
       setMessages((prevMessages) => {
@@ -431,6 +439,31 @@ export default function Home() {
     setNewMessage(e.target.value);
   };
 
+  // Fetch user's dedicated channel
+  const fetchUserChannel = async () => {
+    if (!username) return;
+
+    try {
+      const response = await fetch(`/api/user-channel?username=${encodeURIComponent(username)}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.channelId) {
+          setUserChannel(data.channelId);
+          setUserChannelName(data.channelName);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching user channel:", error);
+    }
+  };
+
+  // Call this when username is set
+  useEffect(() => {
+    if (username) {
+      fetchUserChannel();
+    }
+  }, [username]);
+
   if (isSettingUsername) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
@@ -473,6 +506,7 @@ export default function Home() {
               {localModeOnly && <span className="ml-3 text-xs text-yellow-600 bg-yellow-100 px-2 py-1 rounded-full">Local Mode Only</span>}
               {isConnected && <span className="ml-3 text-xs text-green-600 bg-green-100 px-2 py-1 rounded-full">Connected</span>}
               {!isConnected && <span className="ml-3 text-xs text-red-600 bg-red-100 px-2 py-1 rounded-full">Disconnected</span>}
+              {userChannelName && <span className="ml-3 text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">Slack Channel: {userChannelName}</span>}
             </div>
             <span className="text-sm text-gray-500">Logged in as {username}</span>
           </div>
@@ -505,7 +539,12 @@ export default function Home() {
                     >
                       <div className="text-sm font-medium mb-1">
                         {message.sender}
-                        {message.isFromSlack && <span className="text-xs bg-green-200 text-green-800 px-1 rounded ml-1">Slack</span>}
+                        {message.isFromSlack && (
+                          <span className="text-xs bg-green-200 text-green-800 px-1 rounded ml-1">
+                            Slack
+                            {message.channelName && ` (${message.channelName})`}
+                          </span>
+                        )}
                         <span className="text-xs opacity-75 ml-2">{formatDistanceToNow(new Date(message.timestamp), { addSuffix: true })}</span>
                       </div>
                       <p className="whitespace-pre-wrap break-words">{message.text}</p>
