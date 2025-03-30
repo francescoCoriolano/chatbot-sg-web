@@ -37,6 +37,7 @@ export const initializeSocket = () => {
 
       // When the socket connects, tell the server to send any missed messages
       setTimeout(() => {
+        console.log("Requesting missed messages");
         socket?.emit("get_missed_messages", { requestId: Date.now() });
       }, 1000);
     });
@@ -61,6 +62,7 @@ export const initializeSocket = () => {
 
       // Force a refresh of event subscriptions
       socket?.emit("subscribe_events", { events: ["chat_message", "slack_message"] });
+      console.log("Re-subscribed to events after reconnection");
     });
 
     socket.io.on("reconnect_attempt", (attempt) => {
@@ -82,6 +84,7 @@ export const initializeSocket = () => {
 
     // Make sure socket connects
     if (!socket.connected) {
+      console.log("Explicitly connecting socket...");
       socket.connect();
     }
 

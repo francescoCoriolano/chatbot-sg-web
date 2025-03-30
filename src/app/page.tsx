@@ -412,17 +412,20 @@ export default function Home() {
     // Add message to local state immediately for better user experience
     setMessages((prev) => [...prev, localMessage]);
 
-    // Skip API call if we already know we're in local-only mode
-    if (localModeOnly) {
-      // In local-only mode, at least broadcast to other tabs via socket
-      if (socketRef.current) {
-        socketRef.current.emit("chat_message", localMessage);
-      }
-      setIsLoading(false);
-      return;
-    }
-
     try {
+      // IMPORTANT: Directly emit the message to the socket
+      // This is more reliable than going through the API
+      if (socketRef.current && socketRef.current.connected) {
+        console.log("Directly emitting chat_message to socket:", localMessage);
+        socketRef.current.emit("chat_message", localMessage);
+        setIsLoading(false);
+        return;
+      } else {
+        console.warn("Socket not connected, falling back to API call");
+      }
+
+      // Fall back to API call if socket is not available
+      console.log("Sending message to API for Slack forwarding:", localMessage);
       const response = await fetch("/api/slack-chat", {
         method: "POST",
         headers: {
@@ -437,6 +440,7 @@ export default function Home() {
       });
 
       const data = await response.json();
+      console.log("API response:", data);
 
       // If message was sent to Slack, track the Slack timestamp for correlation
       if (data.slackStatus?.success && data.slackStatus.slackTs) {

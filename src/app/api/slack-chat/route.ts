@@ -9,81 +9,43 @@ interface Message {
   username: string;
 }
 
+// Add a global declaration for the recentMessages property
+declare global {
+  var recentMessages: {
+    chat_message: any[];
+    slack_message: any[];
+  };
+}
+
+// Helper function to get recent messages from our global cache
+const getRecentMessages = () => {
+  // Access the global messages cache from server.js
+  try {
+    if (typeof global !== "undefined" && global.recentMessages) {
+      // If we have explicitly defined recentMessages globally
+      return [...global.recentMessages.slack_message];
+    }
+  } catch (error) {
+    console.error("Error accessing recent messages:", error);
+  }
+
+  // Return empty array as fallback
+  return [];
+};
+
 // To support bootstrapping when the client first loads
 export async function GET() {
   try {
-    // Check environment variables but don't throw an error
-    if (!SLACK_BOT_TOKEN || !SLACK_CHANNEL_ID) {
-      console.warn("Environment variables missing for Slack integration:", {
-        hasToken: !!SLACK_BOT_TOKEN,
-        hasChannel: !!SLACK_CHANNEL_ID,
-      });
-      // Return empty messages array when running without Slack integration
-      return NextResponse.json({
-        messages: [],
-        status: "No Slack integration configured. Set SLACK_BOT_TOKEN and SLACK_CHANNEL_ID environment variables.",
-      });
-    }
+    // Return the cached messages instead of fetching from Slack
+    const messages = getRecentMessages();
 
-    console.log("Fetching initial messages from Slack channel:", SLACK_CHANNEL_ID);
+    console.log(`Returning ${messages.length} cached messages from Socket Mode implementation`);
 
-    // Fetch recent messages from Slack channel (just for initial load)
-    const response = await fetch(`https://slack.com/api/conversations.history?channel=${SLACK_CHANNEL_ID}&limit=20`, {
-      headers: {
-        Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
-      },
+    return NextResponse.json({
+      messages,
+      socketMode: true,
+      status: "Using Socket Mode - messages are cached locally",
     });
-
-    const data = await response.json();
-    console.log("Slack API response:", {
-      ok: data.ok,
-      messageCount: data.messages?.length,
-      error: data.error,
-    });
-
-    if (!data.ok) {
-      // If there's still an error, check if it's because the token doesn't have permission
-      if (data.error === "not_in_channel") {
-        // Return empty messages array instead of error for this specific case
-        return NextResponse.json({
-          messages: [],
-          status: "Bot is not in the channel. Add the bot to the channel or add the channels:join permission.",
-        });
-      }
-      throw new Error(`Slack API error: ${data.error}`);
-    }
-
-    // Filter and format messages
-    const messages = data.messages
-      ? data.messages
-          .filter((msg: any) => !msg.subtype) // Filter out system messages
-          .map((msg: any) => {
-            const isFromApp = msg.text?.startsWith("From ");
-            return {
-              id: msg.ts,
-              text: isFromApp ? msg.text.replace(/^From \w+: /, "") : msg.text,
-              sender: isFromApp ? msg.text.split(":")[0].replace("From ", "") : msg.username || "Slack User",
-              timestamp: new Date(Number(msg.ts) * 1000).toISOString(),
-              isFromSlack: !isFromApp, // Mark messages sent from our app as not from Slack
-              isFromApp,
-              userId: msg.user || undefined, // Include Slack user ID
-            };
-          })
-          .reverse() // Show newest messages last
-      : [];
-
-    // Ensure all Slack-originating messages have isFromSlack set to true
-    const formattedMessages = messages.map((msg: any) => {
-      if (!msg.isFromApp) {
-        return {
-          ...msg,
-          isFromSlack: true,
-        };
-      }
-      return msg;
-    });
-
-    return NextResponse.json({ messages: formattedMessages });
   } catch (error: any) {
     console.error("Error in slack-chat function:", error);
 
@@ -105,24 +67,17 @@ export async function POST(req: NextRequest) {
     let messageData;
 
     if (isWebhook) {
-      // This is a direct webhook post - use the message directly
+      // This is a direct webhook post - we don't need this with Socket Mode
+      // but keeping it for backward compatibility
       messageData = await req.json();
-      console.log("Received webhook message to store:", messageData);
+      console.log("Received webhook message to store (not used in Socket Mode):", messageData);
 
-      // Ensure isFromSlack is set to true for webhook messages
-      messageData = {
-        ...messageData,
-        isFromSlack: true,
-      };
-
-      // Broadcast to connected clients
-      const success = broadcastMessage("slack_message", messageData);
-
-      if (!success) {
-        console.warn("Failed to broadcast webhook message directly - will be available on next fetch");
-      }
-
-      return NextResponse.json({ success: true, message: messageData });
+      // Return success but note that Socket Mode is active
+      return NextResponse.json({
+        success: true,
+        socketMode: true,
+        message: "Socket Mode active, webhook messages not needed",
+      });
     }
 
     // Normal client message flow
@@ -145,87 +100,29 @@ export async function POST(req: NextRequest) {
 
     console.log("Broadcasting chat message:", chatMessage);
 
-    // Broadcast message to all connected clients
-    const success = broadcastMessage("chat_message", chatMessage);
-
-    if (!success) {
-      console.warn("No Socket.IO server available to broadcast chat message - will retry");
-      // Try broadcasting again after a short delay in case server is initializing
-      setTimeout(() => {
-        const retrySuccess = broadcastMessage("chat_message", chatMessage);
-        console.log("Retry broadcast result:", retrySuccess ? "success" : "failed");
-      }, 1000);
-    }
-
-    // If we have Slack credentials, also send to Slack
-    if (SLACK_BOT_TOKEN && SLACK_CHANNEL_ID) {
-      try {
-        // Send message to Slack
-        const response = await fetch("https://slack.com/api/chat.postMessage", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            channel: SLACK_CHANNEL_ID,
-            text: `From ${sender}: ${message}`,
-            unfurl_links: false,
-            unfurl_media: false,
-            // Add metadata to help with message identification
-            metadata: JSON.stringify({
-              client_message_id: clientMessageId,
-              client_sender: sender,
-            }),
-          }),
-        });
-
-        const data = await response.json();
-
-        if (!data.ok) {
-          console.error("Error sending message to Slack:", data.error);
-          return NextResponse.json({
-            success: true,
-            message: chatMessage,
-            slackStatus: {
-              success: false,
-              error: data.error,
-            },
-          });
-        }
-
-        // Update the chat message with the Slack timestamp for future correlation
-        const updatedMessage = {
-          ...chatMessage,
-          slackTs: data.ts, // Store the Slack timestamp to help with identification
-        };
-
-        console.log("Message sent to Slack successfully");
-        return NextResponse.json({
-          success: true,
-          message: updatedMessage,
-          slackStatus: {
-            success: true,
-            ts: data.ts,
-            // Pass back the slackTs for client-side tracking
-            slackTs: data.ts,
-          },
-        });
-      } catch (error) {
-        console.error("Error sending to Slack:", error);
-        return NextResponse.json({
-          success: true,
-          message: chatMessage,
-          slackStatus: {
-            success: false,
-            error: "Failed to send to Slack API",
-          },
-        });
+    // Broadcast this message to all clients including the server
+    // We need to use the socket server to broadcast
+    try {
+      // Check if socket.io is available
+      if (typeof global.socketIO !== "undefined") {
+        // Use the global socket.io instance to broadcast
+        global.socketIO.emit("chat_message", chatMessage);
+        console.log("Message broadcast to socket.io clients for Slack forwarding");
+      } else {
+        console.error("Socket.io instance not available for broadcasting");
       }
+    } catch (error) {
+      console.error("Error broadcasting message:", error);
     }
 
-    // No Slack integration configured, just return success with local message
-    return NextResponse.json({ success: true, message: chatMessage });
+    // Send message to Slack using the slack app from server.js
+    // This will now happen directly in server.js via the Socket Mode client
+
+    return NextResponse.json({
+      success: true,
+      message: chatMessage,
+      socketMode: true,
+    });
   } catch (error) {
     console.error("Error processing chat message:", error);
     return NextResponse.json({ error: "Failed to process message" }, { status: 500 });
