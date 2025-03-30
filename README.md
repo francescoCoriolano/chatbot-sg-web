@@ -23,7 +23,7 @@ A real-time chat application that integrates with Slack, allowing seamless commu
 ### Step 1: Clone and Install
 
 ```bash
-git clone [repository-url]
+git clone https://github.com/pavlo-sg/chatbot.git
 cd chat-app
 pnpm install
 ```
