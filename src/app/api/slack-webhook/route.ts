@@ -65,15 +65,52 @@ export async function POST(req: Request) {
       // Check if we have a message to broadcast
       if (message.text) {
         console.log("Broadcasting Slack message:", message);
+
+        // Make sure socketIO is ready before trying to broadcast
+        const fetchMissingMessages = async () => {
+          try {
+            // Store in API cache through a request to our API
+            const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/slack-chat`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Internal-Source": "webhook",
+              },
+              body: JSON.stringify(message),
+            });
+
+            if (response.ok) {
+              console.log("Successfully stored Slack message in API cache");
+            } else {
+              console.error("Failed to store Slack message in API cache:", await response.text());
+            }
+          } catch (error) {
+            console.error("Error storing Slack message in API cache:", error);
+          }
+        };
+
+        // Try to store the message in the API cache in parallel with broadcasting
+        fetchMissingMessages().catch(console.error);
+
+        // Try to broadcast the message
         const success = broadcastMessage("slack_message", message);
 
         if (!success) {
           console.warn("No Socket.IO server available to broadcast Slack message - will retry");
-          // Try broadcasting again after a short delay in case server is initializing
-          setTimeout(() => {
-            const retrySuccess = broadcastMessage("slack_message", message);
-            console.log("Retry broadcast result:", retrySuccess ? "success" : "failed");
-          }, 1000);
+          // Make multiple attempts to broadcast with increasing delays
+          const retryDelays = [500, 1000, 3000, 5000];
+
+          retryDelays.forEach((delay, index) => {
+            setTimeout(() => {
+              const retrySuccess = broadcastMessage("slack_message", message, false); // No further retries from this call
+              console.log(`Retry broadcast attempt ${index + 1}/${retryDelays.length} after ${delay}ms:`, retrySuccess ? "success" : "failed");
+
+              // If this is the last attempt and it failed, store the message for later retrieval
+              if (!retrySuccess && index === retryDelays.length - 1) {
+                console.warn(`Failed to broadcast Slack message after all retry attempts for message: ${JSON.stringify(message)}`);
+              }
+            }, delay);
+          });
         }
       }
     }

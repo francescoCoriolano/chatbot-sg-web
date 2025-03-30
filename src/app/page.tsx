@@ -36,6 +36,10 @@ export default function Home() {
   const [slackTypingUsers, setSlackTypingUsers] = useState<TypingUser[]>([]);
   const socketRef = useRef<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  // Track message IDs sent by this client to prevent duplicates from Slack polling
+  const [sentMessageIds] = useState<Set<string>>(new Set());
+  // Track Slack timestamps for messages we've sent
+  const [slackTimestamps] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     localStorage.setItem("chat-messages", JSON.stringify(messages));
@@ -142,10 +146,19 @@ export default function Home() {
     const onChatMessage = (message: Message) => {
       console.log("Received message via socket:", message);
 
+      // Don't skip our own messages (we need the original one to appear)
+      // Just use deduplication to prevent duplicates
+
       // Add the message to our state if we don't already have it
       setMessages((prevMessages) => {
-        // Check if we already have this message
-        if (prevMessages.some((msg) => msg.id === message.id)) {
+        // Check if we already have this message - use both ID and timestamp for reliable deduplication
+        const isDuplicate = prevMessages.some(
+          (msg) =>
+            msg.id === message.id || (message.sender === username && msg.text === message.text && msg.sender === message.sender && Math.abs(new Date(msg.timestamp).getTime() - new Date(message.timestamp).getTime()) < 5000)
+        );
+
+        if (isDuplicate) {
+          console.log("Duplicate message detected, skipping", message);
           return prevMessages;
         }
 
@@ -159,36 +172,57 @@ export default function Home() {
     const onSlackMessage = (message: Message) => {
       console.log("Received Slack message via socket:", message);
 
+      // For Slack messages, we want to be more strict about filtering our own messages
+      // but we don't want to filter messages incorrectly
+
+      // Only skip if we're confident it's our message (has our clientMessageId or slackTs)
+      const isCertainlyOurMessage = (message.sender === username && message.id && sentMessageIds.has(message.id)) || (message.id && slackTimestamps.has(message.id));
+
+      if (isCertainlyOurMessage) {
+        console.log("Skipping our own message from Slack (positive match):", message.id);
+        return;
+      }
+
+      // Ensure the message is marked as from Slack
+      const slackMessage = {
+        ...message,
+        isFromSlack: true,
+      };
+
       // Add the Slack message to our state
       setMessages((prevMessages) => {
         // Check if we already have this message (prevent duplicates)
-        if (prevMessages.some((msg) => msg.id === message.id)) {
+        const isDuplicate = prevMessages.some(
+          (msg) => msg.id === slackMessage.id || (msg.text === slackMessage.text && msg.sender === slackMessage.sender && Math.abs(new Date(msg.timestamp).getTime() - new Date(slackMessage.timestamp).getTime()) < 5000)
+        );
+
+        if (isDuplicate) {
           console.log("Slack message already exists, skipping");
           return prevMessages;
         }
 
-        console.log("Adding new Slack message to state:", message);
+        console.log("Adding new Slack message to state:", slackMessage);
 
         // If the message was very recent (less than 5 seconds ago), show typing indicator
-        const messageTime = new Date(message.timestamp).getTime();
+        const messageTime = new Date(slackMessage.timestamp).getTime();
         const now = Date.now();
-        if (now - messageTime < 5000 && message.userId) {
+        if (now - messageTime < 5000 && slackMessage.userId) {
           // Add typing indicator that will auto-remove
           setSlackTypingUsers((prev) => {
             // Check if we already have this user typing
-            if (prev.some((u) => u.id === message.userId)) {
+            if (prev.some((u) => u.id === slackMessage.userId)) {
               return prev;
             }
 
             // Add new typing user
             const typingUser = {
-              id: message.userId as string,
-              name: message.sender,
+              id: slackMessage.userId as string,
+              name: slackMessage.sender,
             };
 
             // Auto-clear after 3 seconds
             setTimeout(() => {
-              setSlackTypingUsers((prev) => prev.filter((u) => u.id !== message.userId));
+              setSlackTypingUsers((prev) => prev.filter((u) => u.id !== slackMessage.userId));
             }, 3000);
 
             return [...prev, typingUser];
@@ -196,9 +230,62 @@ export default function Home() {
         }
 
         // Add new message and sort
-        const newMessages = [...prevMessages, message];
+        const newMessages = [...prevMessages, slackMessage];
         return newMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
       });
+    };
+
+    // Manually fetch Slack messages periodically to ensure we have the latest
+    const fetchSlackMessages = async () => {
+      try {
+        const response = await fetch("/api/slack-chat");
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch Slack messages: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const slackMessages = data.messages || [];
+
+        // Merge with existing messages
+        setMessages((prevMessages) => {
+          const existingIds = new Set(prevMessages.map((msg) => msg.id));
+          const newMessages = [...prevMessages];
+          let hasNewMessages = false;
+
+          slackMessages.forEach((msg: Message) => {
+            // Only skip messages we're certain we sent ourselves
+            const isCertainlyOurMessage = (msg.sender === username && sentMessageIds.has(msg.id)) || (msg.id && slackTimestamps.has(msg.id));
+
+            if (isCertainlyOurMessage) {
+              console.log(`Skipping our own message from Slack API (positive match): ${msg.id}`);
+              return;
+            }
+
+            // Basic deduplication check - only check exact ID match
+            if (existingIds.has(msg.id)) {
+              return;
+            }
+
+            // Ensure all Slack messages have isFromSlack flag
+            const messageWithFlag = {
+              ...msg,
+              isFromSlack: true,
+            };
+            newMessages.push(messageWithFlag);
+            hasNewMessages = true;
+            console.log("Added missing Slack message from API:", messageWithFlag);
+          });
+
+          if (!hasNewMessages) {
+            return prevMessages;
+          }
+
+          return newMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        });
+      } catch (error) {
+        console.error("Error fetching Slack messages:", error);
+      }
     };
 
     // Register event handlers
@@ -209,11 +296,19 @@ export default function Home() {
     socket.on("chat_message", onChatMessage);
     socket.on("slack_message", onSlackMessage);
 
+    // When connected, double check for existing Slack messages that may have been missed
+    socket.on("connect", () => {
+      setTimeout(fetchSlackMessages, 1000);
+    });
+
     // Register reconnection event handlers
     socket.io.on("reconnect", onReconnect);
     socket.io.on("reconnect_attempt", onReconnectAttempt);
     socket.io.on("reconnect_error", onReconnectError);
     socket.io.on("reconnect_failed", onReconnectFailed);
+
+    // Set up periodic polling for Slack messages in case socket events are missed
+    const pollInterval = setInterval(fetchSlackMessages, 15000); // Poll every 15 seconds
 
     // Set connected state based on socket's current state
     setIsConnected(socket.connected);
@@ -236,9 +331,18 @@ export default function Home() {
           const newMessages = [...prevMessages];
 
           slackMessages.forEach((msg: Message) => {
-            if (!existingIds.has(msg.id)) {
-              newMessages.push(msg);
+            // Skip if existing by ID
+            if (existingIds.has(msg.id)) {
+              return;
             }
+
+            // Ensure all Slack messages have isFromSlack flag
+            const messageWithFlag = {
+              ...msg,
+              isFromSlack: true,
+            };
+            newMessages.push(messageWithFlag);
+            console.log("Added initial Slack message:", messageWithFlag);
           });
 
           return newMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
@@ -266,6 +370,9 @@ export default function Home() {
       socket.io.off("reconnect_error", onReconnectError);
       socket.io.off("reconnect_failed", onReconnectFailed);
 
+      // Clear the polling interval
+      clearInterval(pollInterval);
+
       // Don't disconnect - keep socket alive for reconnection
     };
   }, [username]);
@@ -284,23 +391,32 @@ export default function Home() {
     setIsLoading(true);
     setError(null);
 
-    const message: Message = {
-      id: Date.now().toString(),
-      text: newMessage,
+    const messageId = Date.now().toString();
+    const messageText = newMessage.trim();
+
+    // Add to our sent messages tracking to prevent duplicates
+    sentMessageIds.add(messageId);
+
+    // Clear input field immediately for better UX
+    setNewMessage("");
+
+    // Create local message
+    const localMessage: Message = {
+      id: messageId,
+      text: messageText,
       sender: username,
       timestamp: new Date().toISOString(),
       isFromSlack: false,
     };
 
-    // Add message to local state immediately (will be confirmed by the server)
-    setMessages((prev) => [...prev, message]);
-    setNewMessage("");
+    // Add message to local state immediately for better user experience
+    setMessages((prev) => [...prev, localMessage]);
 
     // Skip API call if we already know we're in local-only mode
     if (localModeOnly) {
       // In local-only mode, at least broadcast to other tabs via socket
       if (socketRef.current) {
-        socketRef.current.emit("chat_message", message);
+        socketRef.current.emit("chat_message", localMessage);
       }
       setIsLoading(false);
       return;
@@ -313,13 +429,20 @@ export default function Home() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          message: newMessage,
+          message: messageText,
           sender: username,
-          userId: "user_" + Date.now().toString(),
+          userId: "user_" + messageId,
+          clientMessageId: messageId, // Add client message ID for deduplication
         }),
       });
 
       const data = await response.json();
+
+      // If message was sent to Slack, track the Slack timestamp for correlation
+      if (data.slackStatus?.success && data.slackStatus.slackTs) {
+        slackTimestamps.add(data.slackStatus.slackTs);
+        console.log("Tracking Slack timestamp for sent message:", data.slackStatus.slackTs);
+      }
 
       // Check if we need to switch to local-only mode
       if (data.localOnly) {
@@ -412,21 +535,27 @@ export default function Home() {
                 <p className="text-gray-500 text-center">No messages yet. Be the first to send a message!</p>
               </div>
             ) : (
-              messages.map((message) => (
-                <div key={message.id} className={`flex ${message.sender === username ? "justify-end" : "justify-start"}`}>
-                  <div
-                    className={`message-bubble rounded-lg px-4 py-2 max-w-sm shadow ${
-                      message.sender === username ? "bg-blue-600 text-white" : message.isFromSlack ? "bg-green-100 text-gray-900 border border-green-200" : "bg-gray-100 text-gray-900 border border-gray-200"
-                    }`}
-                  >
-                    <div className="text-sm font-medium mb-1">
-                      {message.sender}
-                      <span className="text-xs opacity-75 ml-2">{formatDistanceToNow(new Date(message.timestamp), { addSuffix: true })}</span>
+              messages.map((message) => {
+                // Debug log for message rendering
+                console.log(`Rendering message - id: ${message.id}, from: ${message.sender}, isFromSlack: ${message.isFromSlack}`);
+
+                return (
+                  <div key={message.id} className={`flex ${message.sender === username ? "justify-end" : "justify-start"}`}>
+                    <div
+                      className={`message-bubble rounded-lg px-4 py-2 max-w-sm shadow ${
+                        message.sender === username ? "bg-blue-600 text-white" : message.isFromSlack ? "bg-green-100 text-gray-900 border border-green-200" : "bg-gray-100 text-gray-900 border border-gray-200"
+                      }`}
+                    >
+                      <div className="text-sm font-medium mb-1">
+                        {message.sender}
+                        {message.isFromSlack && <span className="text-xs bg-green-200 text-green-800 px-1 rounded ml-1">Slack</span>}
+                        <span className="text-xs opacity-75 ml-2">{formatDistanceToNow(new Date(message.timestamp), { addSuffix: true })}</span>
+                      </div>
+                      <p className="whitespace-pre-wrap break-words">{message.text}</p>
                     </div>
-                    <p className="whitespace-pre-wrap break-words">{message.text}</p>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
             <div ref={messagesEndRef} />
           </div>

@@ -23,11 +23,22 @@ export const initializeSocket = () => {
       timeout: 30000,
       autoConnect: true,
       transports: ["polling", "websocket"], // Start with polling first, then upgrade to websocket
+      forceNew: false,
+      multiplex: true,
+      withCredentials: false,
     });
 
     // Log connection events
     socket.on("connect", () => {
       console.log("Socket connected, ID:", socket?.id);
+
+      // Re-subscribe to events on reconnect to ensure we receive all events
+      socket?.emit("subscribe_events", { events: ["chat_message", "slack_message"] });
+
+      // When the socket connects, tell the server to send any missed messages
+      setTimeout(() => {
+        socket?.emit("get_missed_messages", { requestId: Date.now() });
+      }, 1000);
     });
 
     socket.on("disconnect", (reason) => {
@@ -47,6 +58,9 @@ export const initializeSocket = () => {
 
     socket.io.on("reconnect", (attempt) => {
       console.log("Socket reconnected after", attempt, "attempts");
+
+      // Force a refresh of event subscriptions
+      socket?.emit("subscribe_events", { events: ["chat_message", "slack_message"] });
     });
 
     socket.io.on("reconnect_attempt", (attempt) => {

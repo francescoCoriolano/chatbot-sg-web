@@ -153,7 +153,7 @@ export const initSocketServer = (req: any, res: any): ServerIO | null => {
 /**
  * Broadcast a message to all connected clients
  */
-export const broadcastMessage = (event: string, message: any, retry = true, maxRetries = 3, currentRetry = 0): boolean => {
+export const broadcastMessage = (event: string, message: any, retry = true, maxRetries = 5, currentRetry = 0): boolean => {
   try {
     // Get the latest instance of io
     const socketIO = getGlobalIO();
@@ -164,16 +164,16 @@ export const broadcastMessage = (event: string, message: any, retry = true, maxR
       // If retry is enabled and we haven't exhausted our retries
       if (retry && currentRetry < maxRetries) {
         const nextRetry = currentRetry + 1;
-        const delay = Math.min(100 * Math.pow(2, currentRetry), 2000); // Exponential backoff
+        const delay = Math.min(100 * Math.pow(2, currentRetry), 3000); // Exponential backoff with higher max delay
 
-        console.log(`Will retry broadcast (${nextRetry}/${maxRetries}) in ${delay}ms`);
+        console.log(`Will retry broadcast (${nextRetry}/${maxRetries}) in ${delay}ms for message: ${JSON.stringify(message)}`);
 
         setTimeout(() => {
           const success = broadcastMessage(event, message, retry, maxRetries, nextRetry);
           if (success) {
             console.log(`Successfully broadcast ${event} message on retry ${nextRetry}`);
           } else if (nextRetry === maxRetries) {
-            console.error(`Failed to broadcast ${event} message after ${maxRetries} retries`);
+            console.error(`Failed to broadcast ${event} message after ${maxRetries} retries: ${JSON.stringify(message)}`);
           }
         }, delay);
       }
@@ -184,13 +184,42 @@ export const broadcastMessage = (event: string, message: any, retry = true, maxR
     // Get the current connection count from global
     const connections = getConnectionCount();
 
-    // Check if we have clients connected
-    if (connections === 0) {
-      console.warn(`Broadcasting ${event} message, but no clients are connected`);
+    // Log full message details in development
+    if (process.env.NODE_ENV !== "production") {
+      console.log(`Broadcasting ${event} message:`, JSON.stringify(message));
     }
 
+    // Check if we have clients connected
+    if (connections === 0) {
+      console.warn(`Broadcasting ${event} message, but no clients are connected. Storing for later delivery.`);
+      // We should still emit the event even if no clients are connected
+      // as they might connect later and Socket.IO will buffer recent events
+    }
+
+    // For slack messages, ensure the isFromSlack flag is set
+    if (event === "slack_message") {
+      // Create a copy with the isFromSlack flag explicitly set to true
+      const messageWithSource = {
+        ...message,
+        isFromSlack: true,
+      };
+
+      console.log(`Broadcasting ${event} message to ${connections} clients with isFromSlack=true`);
+      socketIO.emit(event, messageWithSource);
+
+      // Also broadcast to all sockets individually to ensure delivery
+      socketIO.sockets.sockets.forEach((socket) => {
+        console.log(`Sending ${event} directly to socket ${socket.id}`);
+        socket.emit(event, messageWithSource);
+      });
+
+      return true;
+    }
+
+    // For other message types
     console.log(`Broadcasting ${event} message to ${connections} clients`);
     socketIO.emit(event, message);
+
     return true;
   } catch (error) {
     console.error(`Error broadcasting ${event} message:`, error);

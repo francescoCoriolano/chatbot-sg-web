@@ -72,7 +72,18 @@ export async function GET() {
           .reverse() // Show newest messages last
       : [];
 
-    return NextResponse.json({ messages });
+    // Ensure all Slack-originating messages have isFromSlack set to true
+    const formattedMessages = messages.map((msg: any) => {
+      if (!msg.isFromApp) {
+        return {
+          ...msg,
+          isFromSlack: true,
+        };
+      }
+      return msg;
+    });
+
+    return NextResponse.json({ messages: formattedMessages });
   } catch (error: any) {
     console.error("Error in slack-chat function:", error);
 
@@ -88,7 +99,34 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { message, sender, userId } = await req.json();
+    // Check if this is an internal webhook request
+    const isWebhook = req.headers.get("X-Internal-Source") === "webhook";
+
+    let messageData;
+
+    if (isWebhook) {
+      // This is a direct webhook post - use the message directly
+      messageData = await req.json();
+      console.log("Received webhook message to store:", messageData);
+
+      // Ensure isFromSlack is set to true for webhook messages
+      messageData = {
+        ...messageData,
+        isFromSlack: true,
+      };
+
+      // Broadcast to connected clients
+      const success = broadcastMessage("slack_message", messageData);
+
+      if (!success) {
+        console.warn("Failed to broadcast webhook message directly - will be available on next fetch");
+      }
+
+      return NextResponse.json({ success: true, message: messageData });
+    }
+
+    // Normal client message flow
+    const { message, sender, userId, clientMessageId } = await req.json();
 
     if (!message || !sender) {
       return NextResponse.json({ error: "Message and sender are required" }, { status: 400 });
@@ -96,12 +134,13 @@ export async function POST(req: NextRequest) {
 
     // Format the chat message for local broadcasting
     const chatMessage = {
-      id: Date.now().toString(),
+      id: clientMessageId || Date.now().toString(), // Use the client ID if provided
       text: message,
       sender,
       userId: userId || "anonymous",
       timestamp: new Date().toISOString(),
       isFromSlack: false,
+      clientMessageId, // Keep the original ID for reference
     };
 
     console.log("Broadcasting chat message:", chatMessage);
@@ -133,6 +172,11 @@ export async function POST(req: NextRequest) {
             text: `From ${sender}: ${message}`,
             unfurl_links: false,
             unfurl_media: false,
+            // Add metadata to help with message identification
+            metadata: JSON.stringify({
+              client_message_id: clientMessageId,
+              client_sender: sender,
+            }),
           }),
         });
 
@@ -150,13 +194,21 @@ export async function POST(req: NextRequest) {
           });
         }
 
+        // Update the chat message with the Slack timestamp for future correlation
+        const updatedMessage = {
+          ...chatMessage,
+          slackTs: data.ts, // Store the Slack timestamp to help with identification
+        };
+
         console.log("Message sent to Slack successfully");
         return NextResponse.json({
           success: true,
-          message: chatMessage,
+          message: updatedMessage,
           slackStatus: {
             success: true,
             ts: data.ts,
+            // Pass back the slackTs for client-side tracking
+            slackTs: data.ts,
           },
         });
       } catch (error) {
