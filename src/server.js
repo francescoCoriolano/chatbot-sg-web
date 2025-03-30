@@ -113,14 +113,12 @@ app.prepare().then(() => {
 
     // Send recent messages to newly connected clients
     if (recentMessages.chat_message.length > 0) {
-      console.log(`Sending ${recentMessages.chat_message.length} recent chat messages to new client`);
       recentMessages.chat_message.forEach((message) => {
         socket.emit("chat_message", message);
       });
     }
 
     if (recentMessages.slack_message.length > 0) {
-      console.log(`Sending ${recentMessages.slack_message.length} recent slack messages to new client`);
       recentMessages.slack_message.forEach((message) => {
         socket.emit("slack_message", message);
       });
@@ -134,8 +132,6 @@ app.prepare().then(() => {
 
     // Handle chat messages from clients
     socket.on("chat_message", (data) => {
-      console.log("Chat message received from client via Socket.IO:", data);
-
       // Add isFromSlack=false flag if not present
       const message = {
         ...data,
@@ -151,10 +147,9 @@ app.prepare().then(() => {
       // Broadcast to all clients
       io.emit("chat_message", message);
 
-      // Also send to Slack if bot token is available
+      // Send to Slack if bot token is available
       if (process.env.SLACK_BOT_TOKEN && process.env.SLACK_CHANNEL_ID) {
         try {
-          console.log(`Sending message to Slack via Socket Mode: "${message.text}" from ${message.sender}`);
           // Send message to Slack
           slackApp.client.chat
             .postMessage({
@@ -164,11 +159,10 @@ app.prepare().then(() => {
               unfurl_media: false,
             })
             .then((result) => {
-              console.log("✅ Message sent to Slack successfully:", result.ts);
+              console.log("✅ Message sent to Slack:", result.ts);
             })
             .catch((error) => {
               console.error("❌ Error sending message to Slack:", error.message || error);
-              // Try to provide more detailed error information
               if (error.data) {
                 console.error("  Error details:", JSON.stringify(error.data));
               }
@@ -190,18 +184,14 @@ app.prepare().then(() => {
 
     // Handle requests for missed messages
     socket.on("get_missed_messages", (data) => {
-      console.log(`Client ${socket.id} requesting missed messages:`, data);
-
       // Send all recent messages to the client
       if (recentMessages.chat_message.length > 0) {
-        console.log(`Sending ${recentMessages.chat_message.length} chat messages`);
         recentMessages.chat_message.forEach((message) => {
           socket.emit("chat_message", message);
         });
       }
 
       if (recentMessages.slack_message.length > 0) {
-        console.log(`Sending ${recentMessages.slack_message.length} slack messages`);
         recentMessages.slack_message.forEach((message) => {
           socket.emit("slack_message", message);
         });

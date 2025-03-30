@@ -86,20 +86,17 @@ export default function Home() {
     socketRef.current = socket;
 
     if (!socket) {
-      console.error("Failed to initialize socket");
       setError("Failed to connect to chat server. Please refresh the page.");
       return;
     }
 
     // Connection events
     const onConnect = () => {
-      console.log("Connected to Socket.IO server");
       setIsConnected(true);
       setError(null);
     };
 
     const onDisconnect = (reason: string) => {
-      console.log("Disconnected from Socket.IO server:", reason);
       setIsConnected(false);
 
       if (reason === "io server disconnect") {
@@ -109,46 +106,34 @@ export default function Home() {
     };
 
     const onConnectError = (err: Error) => {
-      console.error("Socket connection error:", err);
       setError(`Connection error: ${err.message}. Retrying...`);
     };
 
     // Handle welcome message
     const onWelcome = (data: any) => {
-      console.log("Welcome message:", data);
-      // Ensure we're connected
       setIsConnected(true);
     };
 
     // Handle reconnect events
     const onReconnect = (attemptNumber: number) => {
-      console.log(`Socket reconnected after ${attemptNumber} attempts`);
       setIsConnected(true);
       setError(null);
     };
 
     const onReconnectAttempt = (attemptNumber: number) => {
-      console.log(`Socket reconnection attempt: ${attemptNumber}`);
       setError(`Connection lost. Reconnecting (attempt ${attemptNumber})...`);
     };
 
     const onReconnectError = (err: Error) => {
-      console.error("Socket reconnection error:", err);
       setError(`Reconnection error: ${err.message}`);
     };
 
     const onReconnectFailed = () => {
-      console.error("Socket reconnection failed after all attempts");
       setError("Failed to reconnect after multiple attempts. Please refresh the page.");
     };
 
     // Handle new messages from the server
     const onChatMessage = (message: Message) => {
-      console.log("Received message via socket:", message);
-
-      // Don't skip our own messages (we need the original one to appear)
-      // Just use deduplication to prevent duplicates
-
       // Add the message to our state if we don't already have it
       setMessages((prevMessages) => {
         // Check if we already have this message - use both ID and timestamp for reliable deduplication
@@ -157,10 +142,7 @@ export default function Home() {
             msg.id === message.id || (message.sender === username && msg.text === message.text && msg.sender === message.sender && Math.abs(new Date(msg.timestamp).getTime() - new Date(message.timestamp).getTime()) < 5000)
         );
 
-        if (isDuplicate) {
-          console.log("Duplicate message detected, skipping", message);
-          return prevMessages;
-        }
+        if (isDuplicate) return prevMessages;
 
         // Add new message and sort
         const newMessages = [...prevMessages, message];
@@ -170,18 +152,10 @@ export default function Home() {
 
     // Handle Slack messages
     const onSlackMessage = (message: Message) => {
-      console.log("Received Slack message via socket:", message);
-
-      // For Slack messages, we want to be more strict about filtering our own messages
-      // but we don't want to filter messages incorrectly
-
       // Only skip if we're confident it's our message (has our clientMessageId or slackTs)
       const isCertainlyOurMessage = (message.sender === username && message.id && sentMessageIds.has(message.id)) || (message.id && slackTimestamps.has(message.id));
 
-      if (isCertainlyOurMessage) {
-        console.log("Skipping our own message from Slack (positive match):", message.id);
-        return;
-      }
+      if (isCertainlyOurMessage) return;
 
       // Ensure the message is marked as from Slack
       const slackMessage = {
@@ -196,14 +170,9 @@ export default function Home() {
           (msg) => msg.id === slackMessage.id || (msg.text === slackMessage.text && msg.sender === slackMessage.sender && Math.abs(new Date(msg.timestamp).getTime() - new Date(slackMessage.timestamp).getTime()) < 5000)
         );
 
-        if (isDuplicate) {
-          console.log("Slack message already exists, skipping");
-          return prevMessages;
-        }
+        if (isDuplicate) return prevMessages;
 
-        console.log("Adding new Slack message to state:", slackMessage);
-
-        // If the message was very recent (less than 5 seconds ago), show typing indicator
+        // If the message was very recent, show typing indicator
         const messageTime = new Date(slackMessage.timestamp).getTime();
         const now = Date.now();
         if (now - messageTime < 5000 && slackMessage.userId) {
@@ -288,32 +257,30 @@ export default function Home() {
       }
     };
 
-    // Register event handlers
+    // Register all event handlers
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
     socket.on("connect_error", onConnectError);
     socket.on("welcome", onWelcome);
-    socket.on("chat_message", onChatMessage);
-    socket.on("slack_message", onSlackMessage);
-
-    // When connected, double check for existing Slack messages that may have been missed
-    socket.on("connect", () => {
-      setTimeout(fetchSlackMessages, 1000);
-    });
-
-    // Register reconnection event handlers
     socket.io.on("reconnect", onReconnect);
     socket.io.on("reconnect_attempt", onReconnectAttempt);
     socket.io.on("reconnect_error", onReconnectError);
     socket.io.on("reconnect_failed", onReconnectFailed);
+    socket.on("chat_message", onChatMessage);
+    socket.on("slack_message", onSlackMessage);
+    socket.on("missed_messages_complete", (data: any) => {
+      // Messages have been loaded
+    });
 
-    // Set up periodic polling for Slack messages in case socket events are missed
+    // When connected, double check for existing Slack messages
+    socket.on("connect", () => {
+      setTimeout(fetchSlackMessages, 1000);
+    });
+
+    // Set up periodic polling for Slack messages as a fallback
     const pollInterval = setInterval(fetchSlackMessages, 15000); // Poll every 15 seconds
 
-    // Set connected state based on socket's current state
-    setIsConnected(socket.connected);
-
-    // Fetch initial messages when the component first loads
+    // Fetch initial data
     const fetchInitialMessages = async () => {
       try {
         const response = await fetch("/api/slack-chat");
@@ -354,26 +321,18 @@ export default function Home() {
 
     fetchInitialMessages();
 
-    // Clean up on unmount
     return () => {
-      // Unregister all event handlers
+      // Cleanup by removing all event listeners
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
       socket.off("connect_error", onConnectError);
       socket.off("welcome", onWelcome);
       socket.off("chat_message", onChatMessage);
       socket.off("slack_message", onSlackMessage);
+      socket.off("missed_messages_complete");
 
-      // Unregister reconnection event handlers
-      socket.io.off("reconnect", onReconnect);
-      socket.io.off("reconnect_attempt", onReconnectAttempt);
-      socket.io.off("reconnect_error", onReconnectError);
-      socket.io.off("reconnect_failed", onReconnectFailed);
-
-      // Clear the polling interval
+      // Clear polling interval
       clearInterval(pollInterval);
-
-      // Don't disconnect - keep socket alive for reconnection
     };
   }, [username]);
 
@@ -394,7 +353,7 @@ export default function Home() {
     const messageId = Date.now().toString();
     const messageText = newMessage.trim();
 
-    // Add to our sent messages tracking to prevent duplicates
+    // Add to sent messages tracking to prevent duplicates
     sentMessageIds.add(messageId);
 
     // Clear input field immediately for better UX
@@ -409,14 +368,12 @@ export default function Home() {
       isFromSlack: false,
     };
 
-    // Add message to local state immediately for better user experience
+    // Add message to local state immediately for better UX
     setMessages((prev) => [...prev, localMessage]);
 
     try {
-      // IMPORTANT: Directly emit the message to the socket
-      // This is more reliable than going through the API
+      // Directly emit message to socket if connected
       if (socketRef.current && socketRef.current.connected) {
-        console.log("Directly emitting chat_message to socket:", localMessage);
         socketRef.current.emit("chat_message", localMessage);
         setIsLoading(false);
         return;
@@ -424,8 +381,7 @@ export default function Home() {
         console.warn("Socket not connected, falling back to API call");
       }
 
-      // Fall back to API call if socket is not available
-      console.log("Sending message to API for Slack forwarding:", localMessage);
+      // Fallback to API call if socket is not available
       const response = await fetch("/api/slack-chat", {
         method: "POST",
         headers: {
@@ -435,31 +391,28 @@ export default function Home() {
           message: messageText,
           sender: username,
           userId: "user_" + messageId,
-          clientMessageId: messageId, // Add client message ID for deduplication
+          clientMessageId: messageId,
         }),
       });
 
       const data = await response.json();
-      console.log("API response:", data);
 
-      // If message was sent to Slack, track the Slack timestamp for correlation
+      // If message was sent to Slack, track the timestamp
       if (data.slackStatus?.success && data.slackStatus.slackTs) {
         slackTimestamps.add(data.slackStatus.slackTs);
-        console.log("Tracking Slack timestamp for sent message:", data.slackStatus.slackTs);
       }
 
-      // Check if we need to switch to local-only mode
+      // Check for local-only mode
       if (data.localOnly) {
         setLocalModeOnly(true);
         setError("Messages are only saved locally. The bot doesn't have permission to send to Slack.");
-        return;
       }
 
       if (!response.ok) {
         throw new Error("Failed to send message to Slack");
       }
     } catch (error) {
-      console.error("Error sending message to Slack:", error);
+      console.error("Error sending message:", error);
       setError("Failed to send message to Slack, but your message is saved locally");
     } finally {
       setIsLoading(false);

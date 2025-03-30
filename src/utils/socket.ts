@@ -10,10 +10,9 @@ export const initializeSocket = () => {
   }
 
   try {
-    console.log("Initializing Socket.IO client");
     socketInitialized = true;
 
-    // Create the socket connection
+    // Create the socket connection with optimized config
     socket = io(typeof window !== "undefined" ? window.location.origin : "", {
       path: "/api/socketio",
       reconnection: true,
@@ -22,22 +21,19 @@ export const initializeSocket = () => {
       reconnectionDelayMax: 5000,
       timeout: 30000,
       autoConnect: true,
-      transports: ["polling", "websocket"], // Start with polling first, then upgrade to websocket
+      transports: ["polling", "websocket"],
       forceNew: false,
       multiplex: true,
-      withCredentials: false,
     });
 
-    // Log connection events
+    // Set up connection event handlers
     socket.on("connect", () => {
-      console.log("Socket connected, ID:", socket?.id);
+      console.log("Socket connected");
 
-      // Re-subscribe to events on reconnect to ensure we receive all events
+      // Subscribe to events and request missed messages
       socket?.emit("subscribe_events", { events: ["chat_message", "slack_message"] });
 
-      // When the socket connects, tell the server to send any missed messages
       setTimeout(() => {
-        console.log("Requesting missed messages");
         socket?.emit("get_missed_messages", { requestId: Date.now() });
       }, 1000);
     });
@@ -48,26 +44,18 @@ export const initializeSocket = () => {
 
     socket.on("connect_error", (err) => {
       console.error("Socket connection error:", err.message);
-      // Retry connection after delay
       setTimeout(() => {
-        if (socket) {
-          console.log("Attempting to reconnect socket...");
-          socket.connect();
-        }
+        if (socket) socket.connect();
       }, 5000);
     });
 
+    // Set up reconnection handlers
     socket.io.on("reconnect", (attempt) => {
       console.log("Socket reconnected after", attempt, "attempts");
-
-      // Force a refresh of event subscriptions
       socket?.emit("subscribe_events", { events: ["chat_message", "slack_message"] });
-      console.log("Re-subscribed to events after reconnection");
     });
 
     socket.io.on("reconnect_attempt", (attempt) => {
-      console.log("Socket reconnection attempt:", attempt);
-      // Force transport to polling on reconnection attempts
       if (socket && attempt > 1) {
         socket.io.opts.transports = ["polling"];
       }
@@ -79,12 +67,11 @@ export const initializeSocket = () => {
 
     socket.io.on("reconnect_failed", () => {
       console.error("Socket reconnection failed");
-      socketInitialized = false; // Allow reinitializing
+      socketInitialized = false;
     });
 
-    // Make sure socket connects
+    // Ensure socket connects
     if (!socket.connected) {
-      console.log("Explicitly connecting socket...");
       socket.connect();
     }
 
@@ -105,7 +92,6 @@ export const getSocket = () => {
 
 export const disconnectSocket = () => {
   if (socket) {
-    console.log("Disconnecting socket");
     socket.disconnect();
     socket = null;
     socketInitialized = false;

@@ -1,27 +1,18 @@
-import { NextRequest, NextResponse } from "next/server";
-import crypto from "crypto";
-import { broadcastMessage } from "@/lib/socket-server";
-import { verifySlackRequest } from "@/utils/slack";
+import { NextResponse } from "next/server";
 
-// Note: This webhook endpoint is no longer used since we've switched to Socket Mode
-// It's kept for reference or if you need to switch back to webhook mode
+// The webhook endpoint was used for Slack Events API integration
+// It's no longer needed with Socket Mode, which uses WebSockets instead
 
-// Slack verification token
-const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET || "";
-const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN || "";
-const SLACK_CHANNEL_ID = process.env.SLACK_CHANNEL_ID || "";
-
-export async function POST(req: Request) {
+export async function POST() {
   return NextResponse.json({
-    status: "Socket Mode active - webhook not in use",
-    socketMode: true,
-    message: "The app is now using Socket Mode to receive messages from Slack",
+    status: "Socket Mode active",
+    message: "This endpoint is deprecated. The app now uses Socket Mode.",
   });
 }
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   return NextResponse.json({
-    status: "Socket Mode active - webhook not in use",
-    socketMode: true,
+    status: "Socket Mode active",
+    message: "This endpoint is deprecated. The app now uses Socket Mode.",
   });
 }
