@@ -1,5 +1,5 @@
-import { Server as ServerIO } from "socket.io";
-import { Server as HttpServer } from "http";
+import { Server as ServerIO } from 'socket.io';
+import { Server as HttpServer } from 'http';
 
 export interface Message {
   id: string;

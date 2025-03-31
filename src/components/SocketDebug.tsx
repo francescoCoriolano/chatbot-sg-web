@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import { useState, useEffect } from "react";
-import { getSocket, isSocketConnected } from "@/utils/socket";
-import { getInitializationStatus } from "@/lib/socket-server";
+import { useState, useEffect } from 'react';
+import { getSocket, isSocketConnected } from '@/utils/socket';
+import { getInitializationStatus } from '@/lib/socket-server';
 
 export default function SocketDebug() {
   const [isConnected, setIsConnected] = useState(false);
@@ -27,14 +27,14 @@ export default function SocketDebug() {
 
       // Fetch server-side status
       try {
-        const response = await fetch("/api/socket-status");
+        const response = await fetch('/api/socket-status');
         if (response.ok) {
           const data = await response.json();
           setServerStatus(data.status);
           setConnectionCount(data.connectionCount);
         }
       } catch (error) {
-        console.error("Failed to fetch socket status:", error);
+        console.error('Failed to fetch socket status:', error);
       }
     };
 
@@ -48,15 +48,18 @@ export default function SocketDebug() {
 
   if (!isVisible) {
     return (
-      <button onClick={() => setIsVisible(true)} className="fixed bottom-2 right-2 bg-gray-100 text-gray-800 px-3 py-1 rounded-md text-xs shadow-md hover:bg-gray-200">
-        {isConnected ? "🟢" : "🔴"} Socket Debug
+      <button
+        onClick={() => setIsVisible(true)}
+        className="fixed right-2 bottom-2 rounded-md bg-gray-100 px-3 py-1 text-xs text-gray-800 shadow-md hover:bg-gray-200"
+      >
+        {isConnected ? '🟢' : '🔴'} Socket Debug
       </button>
     );
   }
 
   return (
-    <div className="fixed bottom-2 right-2 bg-white border border-gray-300 rounded-md shadow-lg p-4 max-w-xs text-xs z-50">
-      <div className="flex justify-between items-center mb-2">
+    <div className="fixed right-2 bottom-2 z-50 max-w-xs rounded-md border border-gray-300 bg-white p-4 text-xs shadow-lg">
+      <div className="mb-2 flex items-center justify-between">
         <h3 className="font-bold">Socket.IO Debug</h3>
         <button onClick={() => setIsVisible(false)} className="text-gray-500 hover:text-gray-700">
           ✕
@@ -67,7 +70,9 @@ export default function SocketDebug() {
         <div>
           <div className="flex justify-between">
             <span>Status:</span>
-            <span className={`font-medium ${isConnected ? "text-green-600" : "text-red-600"}`}>{isConnected ? "Connected" : "Disconnected"}</span>
+            <span className={`font-medium ${isConnected ? 'text-green-600' : 'text-red-600'}`}>
+              {isConnected ? 'Connected' : 'Disconnected'}
+            </span>
           </div>
         </div>
 
@@ -82,8 +87,14 @@ export default function SocketDebug() {
           <>
             <div className="flex justify-between">
               <span>Server:</span>
-              <span className={`font-medium ${serverStatus.initialized ? "text-green-600" : serverStatus.initializing ? "text-yellow-600" : "text-red-600"}`}>
-                {serverStatus.initialized ? "Running" : serverStatus.initializing ? "Starting" : "Not Started"}
+              <span
+                className={`font-medium ${serverStatus.initialized ? 'text-green-600' : serverStatus.initializing ? 'text-yellow-600' : 'text-red-600'}`}
+              >
+                {serverStatus.initialized
+                  ? 'Running'
+                  : serverStatus.initializing
+                    ? 'Starting'
+                    : 'Not Started'}
               </span>
             </div>
 
@@ -97,16 +108,21 @@ export default function SocketDebug() {
             {serverStatus.error && (
               <div className="mt-1">
                 <div className="text-red-600">Error:</div>
-                <div className="text-red-600 font-mono text-xs truncate">{serverStatus.error}</div>
+                <div className="truncate font-mono text-xs text-red-600">{serverStatus.error}</div>
               </div>
             )}
           </>
         )}
 
-        <div className="text-gray-500 text-[10px] mt-2">Last checked: {new Date(lastChecked).toLocaleTimeString()}</div>
+        <div className="mt-2 text-[10px] text-gray-500">
+          Last checked: {new Date(lastChecked).toLocaleTimeString()}
+        </div>
 
-        <div className="flex space-x-2 mt-2">
-          <button onClick={() => window.location.reload()} className="bg-blue-100 hover:bg-blue-200 text-blue-800 px-2 py-1 rounded text-xs">
+        <div className="mt-2 flex space-x-2">
+          <button
+            onClick={() => window.location.reload()}
+            className="rounded bg-blue-100 px-2 py-1 text-xs text-blue-800 hover:bg-blue-200"
+          >
             Refresh Page
           </button>
           <button
@@ -121,7 +137,7 @@ export default function SocketDebug() {
                 }
               }
             }}
-            className="bg-yellow-100 hover:bg-yellow-200 text-yellow-800 px-2 py-1 rounded text-xs"
+            className="rounded bg-yellow-100 px-2 py-1 text-xs text-yellow-800 hover:bg-yellow-200"
           >
             Reconnect
           </button>

@@ -1,5 +1,5 @@
-import { Server as ServerIO } from "socket.io";
-import { Server as HttpServer } from "http";
+import { Server as ServerIO } from 'socket.io';
+import { Server as HttpServer } from 'http';
 
 // Define types for our state
 interface RecentMessages {
@@ -21,9 +21,9 @@ let _socketIO: ServerIO | undefined = undefined;
 let _httpServer: HttpServer | undefined = undefined;
 let _connectionCount = 0;
 let _slackApp: any = undefined;
-let _userChannels: Record<string, string> = {};
-let _slackUserIds: Record<string, string> = {};
-let _recentMessages: RecentMessages = {
+const _userChannels: Record<string, string> = {};
+const _slackUserIds: Record<string, string> = {};
+const _recentMessages: RecentMessages = {
   chat_message: [],
   slack_message: [],
 };

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from 'next/server';
 
 // Add a global declaration for the recentMessages property
 declare global {
@@ -11,11 +11,11 @@ declare global {
 // Helper function to get recent messages from our global cache
 const getRecentMessages = () => {
   try {
-    if (typeof global !== "undefined" && global.recentMessages) {
+    if (typeof global !== 'undefined' && global.recentMessages) {
       return [...global.recentMessages.slack_message];
     }
   } catch (error) {
-    console.error("Error accessing recent messages:", error);
+    console.error('Error accessing recent messages:', error);
   }
   return [];
 };
@@ -27,16 +27,16 @@ export async function GET() {
     return NextResponse.json({
       messages,
       socketMode: true,
-      status: "success",
+      status: 'success',
     });
   } catch (error: any) {
-    console.error("Error retrieving cached messages:", error);
+    console.error('Error retrieving cached messages:', error);
     return NextResponse.json(
       {
         success: false,
         error: error.message,
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     const { message, sender, userId, clientMessageId } = await req.json();
 
     if (!message || !sender) {
-      return NextResponse.json({ error: "Message and sender are required" }, { status: 400 });
+      return NextResponse.json({ error: 'Message and sender are required' }, { status: 400 });
     }
 
     // Format the chat message
@@ -55,29 +55,29 @@ export async function POST(req: NextRequest) {
       id: clientMessageId || Date.now().toString(),
       text: message,
       sender,
-      userId: userId || "anonymous",
+      userId: userId || 'anonymous',
       timestamp: new Date().toISOString(),
       isFromSlack: false,
     };
 
     // Broadcast via Socket.IO if available
     try {
-      if (typeof global.socketIO !== "undefined") {
-        global.socketIO.emit("chat_message", chatMessage);
+      if (typeof global.socketIO !== 'undefined') {
+        global.socketIO.emit('chat_message', chatMessage);
       } else {
-        console.error("Socket.IO instance not available for broadcasting");
+        console.error('Socket.IO instance not available for broadcasting');
       }
     } catch (error) {
-      console.error("Error broadcasting message:", error);
+      console.error('Error broadcasting message:', error);
     }
 
     return NextResponse.json({
       success: true,
       message: chatMessage,
-      note: "Direct socket communication is preferred over this API",
+      note: 'Direct socket communication is preferred over this API',
     });
   } catch (error) {
-    console.error("Error processing chat message:", error);
-    return NextResponse.json({ error: "Failed to process message" }, { status: 500 });
+    console.error('Error processing chat message:', error);
+    return NextResponse.json({ error: 'Failed to process message' }, { status: 500 });
   }
 }

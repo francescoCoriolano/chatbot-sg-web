@@ -9,9 +9,9 @@ let _socketIO = undefined;
 let _httpServer = undefined;
 let _connectionCount = 0;
 let _slackApp = undefined;
-let _userChannels = {};
-let _slackUserIds = {};
-let _recentMessages = {
+const _userChannels = {};
+const _slackUserIds = {};
+const _recentMessages = {
   chat_message: [],
   slack_message: [],
 };

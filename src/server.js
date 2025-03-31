@@ -1,10 +1,10 @@
-const { createServer } = require("http");
-const { parse } = require("url");
-const next = require("next");
-const { Server } = require("socket.io");
-const { App } = require("@slack/bolt");
+const { createServer } = require('http');
+const { parse } = require('url');
+const next = require('next');
+const { Server } = require('socket.io');
+const { App } = require('@slack/bolt');
 
-const dev = process.env.NODE_ENV !== "production";
+const dev = process.env.NODE_ENV !== 'production';
 const app = next({ dev });
 const handle = app.getRequestHandler();
 
@@ -40,22 +40,24 @@ app.prepare().then(() => {
 
   // Create Socket.IO server directly here
   const io = new Server(server, {
-    path: "/api/socketio",
+    path: '/api/socketio',
     addTrailingSlash: false,
     pingTimeout: 60000,
     pingInterval: 25000,
-    transports: ["polling", "websocket"],
+    transports: ['polling', 'websocket'],
     cors: {
-      origin: "*",
-      methods: ["GET", "POST"],
+      origin: '*',
+      methods: ['GET', 'POST'],
     },
   });
 
   // Check Slack configuration
-  console.log("Checking Slack configuration:");
-  console.log(`- SLACK_BOT_TOKEN: ${process.env.SLACK_BOT_TOKEN ? "✅ Configured" : "❌ Missing"}`);
-  console.log(`- SLACK_APP_TOKEN: ${process.env.SLACK_APP_TOKEN ? "✅ Configured" : "❌ Missing"}`);
-  console.log(`- SLACK_CHANNEL_ID: ${process.env.SLACK_CHANNEL_ID ? "✅ Configured" : "❌ Missing"}`);
+  console.log('Checking Slack configuration:');
+  console.log(`- SLACK_BOT_TOKEN: ${process.env.SLACK_BOT_TOKEN ? '✅ Configured' : '❌ Missing'}`);
+  console.log(`- SLACK_APP_TOKEN: ${process.env.SLACK_APP_TOKEN ? '✅ Configured' : '❌ Missing'}`);
+  console.log(
+    `- SLACK_CHANNEL_ID: ${process.env.SLACK_CHANNEL_ID ? '✅ Configured' : '❌ Missing'}`,
+  );
 
   // Initialize Slack app with Socket Mode
   const slackApp = new App({
@@ -75,62 +77,62 @@ app.prepare().then(() => {
       // Create blocks for the Home tab view
       const blocks = [
         {
-          type: "header",
+          type: 'header',
           text: {
-            type: "plain_text",
-            text: "Welcome to Chat App!",
+            type: 'plain_text',
+            text: 'Welcome to Chat App!',
             emoji: true,
           },
         },
         {
-          type: "divider",
+          type: 'divider',
         },
         {
-          type: "section",
+          type: 'section',
           text: {
-            type: "mrkdwn",
+            type: 'mrkdwn',
             text: `*Your dedicated channel is ready:*`,
           },
         },
         {
-          type: "section",
+          type: 'section',
           text: {
-            type: "mrkdwn",
+            type: 'mrkdwn',
             text: `*<#${channelId}|${channelName}>*`,
           },
         },
         {
-          type: "context",
+          type: 'context',
           elements: [
             {
-              type: "mrkdwn",
+              type: 'mrkdwn',
               text: `Connected to username: *${username}*`,
             },
           ],
         },
         {
-          type: "divider",
+          type: 'divider',
         },
         {
-          type: "section",
+          type: 'section',
           text: {
-            type: "mrkdwn",
-            text: "Messages sent in the web app will appear in this channel.",
+            type: 'mrkdwn',
+            text: 'Messages sent in the web app will appear in this channel.',
           },
         },
         {
-          type: "actions",
+          type: 'actions',
           elements: [
             {
-              type: "button",
+              type: 'button',
               text: {
-                type: "plain_text",
-                text: "Open Channel",
+                type: 'plain_text',
+                text: 'Open Channel',
                 emoji: true,
               },
               value: channelId,
               url: `https://slack.com/app_redirect?channel=${channelId}`,
-              action_id: "open_channel",
+              action_id: 'open_channel',
             },
           ],
         },
@@ -140,7 +142,7 @@ app.prepare().then(() => {
       await slackApp.client.views.publish({
         user_id: slackUserId,
         view: {
-          type: "home",
+          type: 'home',
           blocks,
         },
       });
@@ -152,7 +154,7 @@ app.prepare().then(() => {
   };
 
   // Helper function to create or get a channel for a user
-  const getOrCreateChannelForUser = async (username) => {
+  const getOrCreateChannelForUser = async username => {
     // Check if we already have a channel for this user
     if (userChannels[username]) {
       return userChannels[username];
@@ -165,7 +167,7 @@ app.prepare().then(() => {
       // Create channel name (lowercase, no spaces, max 80 chars)
       const channelName = `chat-app-${username
         .toLowerCase()
-        .replace(/[^a-z0-9]/g, "-")
+        .replace(/[^a-z0-9]/g, '-')
         .substring(0, 70)}`;
 
       // Create the channel
@@ -188,7 +190,7 @@ app.prepare().then(() => {
 
       // Find the user in existing messages to get their Slack ID
       const existingMessages = [...recentMessages.chat_message, ...recentMessages.slack_message];
-      const userMessage = existingMessages.find((m) => m.sender === username && m.slackUserId);
+      const userMessage = existingMessages.find(m => m.sender === username && m.slackUserId);
 
       if (userMessage && userMessage.slackUserId) {
         // Update the App Home view for this user
@@ -207,10 +209,10 @@ app.prepare().then(() => {
   (async () => {
     try {
       await slackApp.start();
-      console.log("⚡️ Slack app is running in Socket Mode!");
+      console.log('⚡️ Slack app is running in Socket Mode!');
 
       // Handle App Home opened events
-      slackApp.event("app_home_opened", async ({ event, client }) => {
+      slackApp.event('app_home_opened', async ({ event, client }) => {
         console.log(`App Home opened by user ${event.user}`);
 
         // Find the username associated with this Slack user ID
@@ -242,20 +244,20 @@ app.prepare().then(() => {
           // Show generic welcome screen
           const blocks = [
             {
-              type: "header",
+              type: 'header',
               text: {
-                type: "plain_text",
-                text: "Welcome to Chat App!",
+                type: 'plain_text',
+                text: 'Welcome to Chat App!',
                 emoji: true,
               },
             },
             {
-              type: "divider",
+              type: 'divider',
             },
             {
-              type: "section",
+              type: 'section',
               text: {
-                type: "mrkdwn",
+                type: 'mrkdwn',
                 text: "You haven't sent any messages in the Chat App yet. Once you do, your dedicated channel will appear here.",
               },
             },
@@ -265,7 +267,7 @@ app.prepare().then(() => {
           await client.views.publish({
             user_id: event.user,
             view: {
-              type: "home",
+              type: 'home',
               blocks,
             },
           });
@@ -274,11 +276,11 @@ app.prepare().then(() => {
 
       // Listen for message events from Slack
       slackApp.message(async ({ message, say }) => {
-        console.log("Received message from Slack:", message);
+        console.log('Received message from Slack:', message);
 
         // Skip messages from our app and system messages
         if (message.subtype || message.bot_id) {
-          console.log("Skipping bot/system message");
+          console.log('Skipping bot/system message');
           return;
         }
 
@@ -313,11 +315,11 @@ app.prepare().then(() => {
         // Format the message for our app
         const slackMessage = {
           id: message.ts || Date.now().toString(),
-          text: message.text || "",
-          sender: message.user_profile?.real_name || "Slack User",
-          userId: message.user || "unknown_slack_user",
+          text: message.text || '',
+          sender: message.user_profile?.real_name || 'Slack User',
+          userId: message.user || 'unknown_slack_user',
           slackUserId: message.user,
-          timestamp: new Date(parseInt(message.ts?.split(".")[0]) * 1000).toISOString(),
+          timestamp: new Date(parseInt(message.ts?.split('.')[0]) * 1000).toISOString(),
           isFromSlack: true,
           channelId: message.channel,
           channelName: channelName,
@@ -331,49 +333,51 @@ app.prepare().then(() => {
         }
 
         // Broadcast to all connected clients
-        io.emit("slack_message", slackMessage);
+        io.emit('slack_message', slackMessage);
 
         console.log(`Broadcasted Slack message from channel ${channelName} to clients`);
       });
     } catch (error) {
-      console.error("⚠️ Error starting Slack app:", error);
+      console.error('⚠️ Error starting Slack app:', error);
     }
   })();
 
   // Basic Socket.IO event handlers
-  io.on("connection", (socket) => {
+  io.on('connection', socket => {
     // Increment global connection count
     global.connectionCount++;
     console.log(`Socket connected: ${socket.id}, total connections: ${global.connectionCount}`);
 
     // Send welcome message
-    socket.emit("welcome", {
-      message: "Welcome to the Socket.IO server!",
+    socket.emit('welcome', {
+      message: 'Welcome to the Socket.IO server!',
       socketId: socket.id,
       timestamp: new Date().toISOString(),
     });
 
     // Send recent messages to newly connected clients
     if (recentMessages.chat_message.length > 0) {
-      recentMessages.chat_message.forEach((message) => {
-        socket.emit("chat_message", message);
+      recentMessages.chat_message.forEach(message => {
+        socket.emit('chat_message', message);
       });
     }
 
     if (recentMessages.slack_message.length > 0) {
-      recentMessages.slack_message.forEach((message) => {
-        socket.emit("slack_message", message);
+      recentMessages.slack_message.forEach(message => {
+        socket.emit('slack_message', message);
       });
     }
 
     // Handle disconnection
-    socket.on("disconnect", () => {
+    socket.on('disconnect', () => {
       global.connectionCount--;
-      console.log(`Socket disconnected: ${socket.id}, total connections: ${global.connectionCount}`);
+      console.log(
+        `Socket disconnected: ${socket.id}, total connections: ${global.connectionCount}`,
+      );
     });
 
     // Handle chat messages from clients
-    socket.on("chat_message", async (data) => {
+    socket.on('chat_message', async data => {
       // Add isFromSlack=false flag if not present
       const message = {
         ...data,
@@ -387,7 +391,7 @@ app.prepare().then(() => {
       }
 
       // Broadcast to all clients
-      io.emit("chat_message", message);
+      io.emit('chat_message', message);
 
       // Send to Slack if bot token is available
       if (process.env.SLACK_BOT_TOKEN) {
@@ -403,8 +407,11 @@ app.prepare().then(() => {
               unfurl_links: false,
               unfurl_media: false,
             })
-            .then(async (result) => {
-              console.log(`✅ Message sent to channel ${channelId} for user ${message.sender}:`, result.ts);
+            .then(async result => {
+              console.log(
+                `✅ Message sent to channel ${channelId} for user ${message.sender}:`,
+                result.ts,
+              );
 
               // Store the mapping of message ID to channel ID for reply tracking
               message.slackChannelId = channelId;
@@ -421,47 +428,52 @@ app.prepare().then(() => {
                     channel: channelId,
                   });
 
-                  await updateAppHome(slackUserId, channelId, channelInfo.channel.name, message.sender);
+                  await updateAppHome(
+                    slackUserId,
+                    channelId,
+                    channelInfo.channel.name,
+                    message.sender,
+                  );
                 }
               } catch (homeError) {
-                console.error("Error updating App Home after message send:", homeError);
+                console.error('Error updating App Home after message send:', homeError);
               }
             })
-            .catch((error) => {
-              console.error("❌ Error sending message to Slack:", error.message || error);
+            .catch(error => {
+              console.error('❌ Error sending message to Slack:', error.message || error);
               if (error.data) {
-                console.error("  Error details:", JSON.stringify(error.data));
+                console.error('  Error details:', JSON.stringify(error.data));
               }
             });
         } catch (error) {
-          console.error("❌ Error sending to Slack:", error.message || error);
+          console.error('❌ Error sending to Slack:', error.message || error);
         }
       } else {
-        console.warn("❌ Slack bot token missing - not forwarding message to Slack");
+        console.warn('❌ Slack bot token missing - not forwarding message to Slack');
       }
     });
 
     // Handle subscription requests
-    socket.on("subscribe_events", (data) => {
+    socket.on('subscribe_events', data => {
       console.log(`Client ${socket.id} subscribing to events:`, data.events);
     });
 
     // Handle requests for missed messages
-    socket.on("get_missed_messages", (data) => {
+    socket.on('get_missed_messages', data => {
       // Send all recent messages to the client
       if (recentMessages.chat_message.length > 0) {
-        recentMessages.chat_message.forEach((message) => {
-          socket.emit("chat_message", message);
+        recentMessages.chat_message.forEach(message => {
+          socket.emit('chat_message', message);
         });
       }
 
       if (recentMessages.slack_message.length > 0) {
-        recentMessages.slack_message.forEach((message) => {
-          socket.emit("slack_message", message);
+        recentMessages.slack_message.forEach(message => {
+          socket.emit('slack_message', message);
         });
       }
 
-      socket.emit("missed_messages_complete", {
+      socket.emit('missed_messages_complete', {
         requestId: data.requestId,
         count: recentMessages.chat_message.length + recentMessages.slack_message.length,
       });
@@ -474,7 +486,7 @@ app.prepare().then(() => {
 
   // Start the server
   const port = process.env.PORT || 3000;
-  server.listen(port, (err) => {
+  server.listen(port, err => {
     if (err) throw err;
     console.log(`> Ready on http://localhost:${port}`);
   });

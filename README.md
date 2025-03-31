@@ -1,6 +1,7 @@
 # Slack Chat Integration App
 
-A real-time chat application that integrates with Slack, allowing seamless communication between a web interface and Slack channels.
+A real-time chat application that integrates with Slack, allowing seamless communication between a
+web interface and Slack channels.
 
 ## Features
 
@@ -114,12 +115,13 @@ This app uses:
 
 ### Custom Channel Naming
 
-You can modify the channel naming format in `src/server.js` in the `getOrCreateChannelForUser` function:
+You can modify the channel naming format in `src/server.js` in the `getOrCreateChannelForUser`
+function:
 
 ```javascript
 const channelName = `chat-app-${username
   .toLowerCase()
-  .replace(/[^a-z0-9]/g, "-")
+  .replace(/[^a-z0-9]/g, '-')
   .substring(0, 70)}`;
 ```
 

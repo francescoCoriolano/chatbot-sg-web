@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
-import { getSocketIO, getConnectionCount, getInitializationStatus } from "@/lib/socket-server";
+import { NextResponse } from 'next/server';
+import { getSocketIO, getConnectionCount, getInitializationStatus } from '@/lib/socket-server';
 
 export async function GET() {
   try {
@@ -14,13 +14,13 @@ export async function GET() {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    console.error("Error getting socket status:", error);
+    console.error('Error getting socket status:', error);
     return NextResponse.json(
       {
-        error: "Failed to get socket status",
+        error: 'Failed to get socket status',
         timestamp: new Date().toISOString(),
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

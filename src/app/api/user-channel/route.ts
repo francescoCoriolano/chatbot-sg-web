@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from 'next/server';
 
 // Global declarations for server-side state
 declare global {
@@ -10,24 +10,24 @@ declare global {
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const username = searchParams.get("username");
+    const username = searchParams.get('username');
 
     if (!username) {
-      return NextResponse.json({ error: "Username is required" }, { status: 400 });
+      return NextResponse.json({ error: 'Username is required' }, { status: 400 });
     }
 
     // Check if we already have a channel for this user
-    if (typeof global.userChannels !== "undefined" && global.userChannels[username]) {
+    if (typeof global.userChannels !== 'undefined' && global.userChannels[username]) {
       // Get channel info from Slack
       try {
         const slackApp = global.slackApp;
         if (!slackApp) {
           return NextResponse.json(
             {
-              error: "Slack app not initialized",
+              error: 'Slack app not initialized',
               channelId: global.userChannels[username],
             },
-            { status: 200 }
+            { status: 200 },
           );
         }
 
@@ -38,13 +38,13 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({
           channelId: global.userChannels[username],
           channelName: channelInfo.channel.name,
-          message: "Channel found for user",
+          message: 'Channel found for user',
         });
       } catch (error) {
-        console.error("Error getting channel info:", error);
+        console.error('Error getting channel info:', error);
         return NextResponse.json({
           channelId: global.userChannels[username],
-          message: "Channel ID exists but could not get details",
+          message: 'Channel ID exists but could not get details',
         });
       }
     }
@@ -53,15 +53,16 @@ export async function GET(req: NextRequest) {
     // We'll send the client the channel info on the next request
     // to avoid race conditions with channel creation
     return NextResponse.json({
-      message: "Channel not found for user, it will be created automatically when you send a message",
+      message:
+        'Channel not found for user, it will be created automatically when you send a message',
     });
   } catch (error: any) {
-    console.error("Error in user-channel API:", error);
+    console.error('Error in user-channel API:', error);
     return NextResponse.json(
       {
-        error: error.message || "Unknown error",
+        error: error.message || 'Unknown error',
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
