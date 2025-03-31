@@ -4,7 +4,14 @@ import { useState, useEffect, useRef } from 'react';
 import { Send, MessageSquare } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { Message } from '@/types';
-import { initializeSocket, disconnectSocket } from '@/utils/socket';
+import {
+  initializeSocket,
+  disconnectSocket,
+  getSocket,
+  isSocketConnected,
+  isUsingSocketMode,
+  sendMessageViaSocket,
+} from '@/utils/socket';
 import { Socket } from 'socket.io-client';
 import SocketDebug from '@/components/SocketDebug';
 
@@ -43,6 +50,12 @@ export default function Home() {
   // User's dedicated Slack channel
   const [userChannel, setUserChannel] = useState<string | null>(null);
   const [userChannelName, setUserChannelName] = useState<string | null>(null);
+
+  // Reference to track if component is mounted
+  const mounted = useRef(true);
+
+  // Add a state to track the fallback mode
+  const [usingFallbackMode, setUsingFallbackMode] = useState(false);
 
   useEffect(() => {
     localStorage.setItem('chat-messages', JSON.stringify(messages));
@@ -352,6 +365,58 @@ export default function Home() {
 
     fetchInitialMessages();
 
+    // Check if we're in socket mode or fallback mode
+    const checkConnectionMode = () => {
+      const usingSocket = isUsingSocketMode();
+      setUsingFallbackMode(!usingSocket);
+    };
+
+    // Check initially and on reconnection attempts
+    checkConnectionMode();
+    socket.on('connect', () => {
+      onConnect();
+      checkConnectionMode();
+    });
+
+    socket.on('disconnect', reason => {
+      onDisconnect(reason);
+      checkConnectionMode();
+    });
+
+    // Listen for messages from the API polling fallback
+    const handleApiMessages = (event: CustomEvent) => {
+      if (!event.detail || !event.detail.messages) return;
+
+      const apiMessages = event.detail.messages;
+
+      setMessages(prevMessages => {
+        const existingIds = new Set(prevMessages.map(msg => msg.id));
+        const newMessages = [...prevMessages];
+
+        apiMessages.forEach((msg: Message) => {
+          // Skip if already in messages
+          if (existingIds.has(msg.id)) {
+            return;
+          }
+
+          // Ensure proper flags
+          const messageWithFlags = {
+            ...msg,
+            isFromSlack: !!msg.isFromSlack,
+          };
+
+          newMessages.push(messageWithFlags);
+        });
+
+        return newMessages.sort(
+          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+        );
+      });
+    };
+
+    // Register the event listener for API polling
+    window.addEventListener('api_messages', handleApiMessages as EventListener);
+
     return () => {
       // Cleanup by removing all event listeners
       socket.off('connect', onConnect);
@@ -364,6 +429,12 @@ export default function Home() {
 
       // Clear polling interval
       clearInterval(pollInterval);
+
+      // Remove API polling event listener
+      window.removeEventListener('api_messages', handleApiMessages as EventListener);
+
+      // Track component unmount
+      mounted.current = false;
     };
   }, [username]);
 
@@ -403,16 +474,18 @@ export default function Home() {
     setMessages(prev => [...prev, localMessage]);
 
     try {
-      // Directly emit message to socket if connected
-      if (socketRef.current && socketRef.current.connected) {
-        socketRef.current.emit('chat_message', localMessage);
+      // Try to send via socket first if we're in socket mode
+      const socketSent = sendMessageViaSocket(localMessage);
+
+      if (socketSent) {
+        console.info('Message sent via socket');
         setIsLoading(false);
         return;
-      } else {
-        console.warn('Socket not connected, falling back to API call');
       }
 
-      // Fallback to API call if socket is not available
+      // Fallback to API call if socket is not available or failed
+      console.info('Falling back to API call for sending message');
+
       const response = await fetch('/api/slack-chat', {
         method: 'POST',
         headers: {
@@ -448,7 +521,9 @@ export default function Home() {
       console.error('Error sending message:', error);
       setError('Failed to send message to Slack, but your message is saved locally');
     } finally {
-      setIsLoading(false);
+      if (mounted.current) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -488,6 +563,34 @@ export default function Home() {
       fetchUserChannel();
     }
   }, [username]);
+
+  // Add a status indicator for the connection mode
+  const renderConnectionStatus = () => {
+    const socketConnected = isSocketConnected();
+
+    if (socketConnected) {
+      return (
+        <div className="flex items-center text-xs text-green-600">
+          <div className="mr-1 h-2 w-2 rounded-full bg-green-600"></div>
+          Live mode
+        </div>
+      );
+    } else if (usingFallbackMode) {
+      return (
+        <div className="flex items-center text-xs text-amber-600">
+          <div className="mr-1 h-2 w-2 rounded-full bg-amber-600"></div>
+          Polling mode
+        </div>
+      );
+    } else {
+      return (
+        <div className="flex items-center text-xs text-red-600">
+          <div className="mr-1 h-2 w-2 rounded-full bg-red-600"></div>
+          Disconnected
+        </div>
+      );
+    }
+  };
 
   if (isSettingUsername) {
     return (
@@ -533,16 +636,9 @@ export default function Home() {
                   Local Mode Only
                 </span>
               )}
-              {isConnected && (
-                <span className="ml-3 rounded-full bg-green-100 px-2 py-1 text-xs text-green-600">
-                  Connected
-                </span>
-              )}
-              {!isConnected && (
-                <span className="ml-3 rounded-full bg-red-100 px-2 py-1 text-xs text-red-600">
-                  Disconnected
-                </span>
-              )}
+              <span className="ml-3 rounded-full px-2 py-1 text-xs">
+                {renderConnectionStatus()}
+              </span>
               {userChannelName && (
                 <span className="ml-3 rounded-full bg-blue-100 px-2 py-1 text-xs text-blue-600">
                   Slack Channel: {userChannelName}
