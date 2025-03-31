@@ -6,13 +6,30 @@ declare global {
     chat_message: any[];
     slack_message: any[];
   };
+  var userChannels: Record<string, string>;
 }
 
 // Helper function to get recent messages from our global cache
-const getRecentMessages = () => {
+const getRecentMessages = (username?: string) => {
   try {
     if (typeof global !== 'undefined' && global.recentMessages) {
-      return [...global.recentMessages.slack_message];
+      if (!username) {
+        return [...global.recentMessages.slack_message];
+      }
+
+      // If username is provided, filter messages to only those from the user's channel
+      const userChannelId = global.userChannels?.[username];
+      if (!userChannelId) {
+        console.log(`No channel found for user ${username}, returning empty messages`);
+        return [];
+      }
+
+      console.log(`Filtering messages for user ${username} with channel ${userChannelId}`);
+      // Filter to messages that are either sent by this user, or in their channel
+      return [...global.recentMessages.slack_message].filter(
+        msg =>
+          msg.channelId === userChannelId || msg.sender === username || msg.targetUser === username,
+      );
     }
   } catch (error) {
     console.error('Error accessing recent messages:', error);
@@ -21,9 +38,16 @@ const getRecentMessages = () => {
 };
 
 // Return cached messages from Socket Mode
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const messages = getRecentMessages();
+    // Get username from query parameter
+    const { searchParams } = new URL(req.url);
+    const username = searchParams.get('username');
+
+    const messages = getRecentMessages(username || undefined);
+
+    console.log(`Returning ${messages.length} messages for ${username || 'all users'}`);
+
     return NextResponse.json({
       messages,
       socketMode: true,

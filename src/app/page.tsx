@@ -24,7 +24,8 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('chat-messages');
-      return saved ? JSON.parse(saved) : [];
+      // Start with empty messages by default
+      return [];
     }
     return [];
   });
@@ -50,6 +51,14 @@ export default function Home() {
   // User's dedicated Slack channel
   const [userChannel, setUserChannel] = useState<string | null>(null);
   const [userChannelName, setUserChannelName] = useState<string | null>(null);
+  // Add state for channel deletion
+  const [isDeletingChannel, setIsDeletingChannel] = useState<boolean>(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState<string>('');
+  const [successMessage, setSuccessMessage] = useState<string>('');
+  // Add state for modal visibility
+  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  // Add state for logout confirmation dialog
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState<boolean>(false);
 
   // Reference to track if component is mounted
   const mounted = useRef(true);
@@ -57,7 +66,32 @@ export default function Home() {
   // Add a state to track the fallback mode
   const [usingFallbackMode, setUsingFallbackMode] = useState(false);
 
+  // Check localStorage at startup
   useEffect(() => {
+    // If no username, don't load messages
+    if (!username) {
+      console.log('No username set, not loading messages');
+      return;
+    }
+
+    // Log the initial localStorage state
+    const savedMessages = localStorage.getItem('chat-messages');
+    console.log(
+      'Initial localStorage state:',
+      savedMessages ? `${savedMessages.length} chars` : 'empty',
+    );
+
+    // Clear messages if username just changed
+    setMessages([]);
+
+    // Store empty messages to localStorage
+    localStorage.setItem('chat-messages', '[]');
+
+    console.log('Starting with fresh message state for user:', username);
+  }, [username]);
+
+  useEffect(() => {
+    console.log('Syncing messages to localStorage:', messages.length, 'messages');
     localStorage.setItem('chat-messages', JSON.stringify(messages));
   }, [messages]);
 
@@ -150,6 +184,17 @@ export default function Home() {
 
     // Handle new messages from the server
     const onChatMessage = (message: Message) => {
+      // Check if this message is from this user or relevant to this user
+      const isRelevantMessage =
+        message.sender === username ||
+        (userChannel && message.channelId === userChannel) ||
+        message.targetUser === username;
+
+      if (!isRelevantMessage && message.sender !== username) {
+        console.log(`Skipping chat message not relevant to user ${username}:`, message.id);
+        return;
+      }
+
       // Add the message to our state if we don't already have it
       setMessages(prevMessages => {
         // Check if we already have this message - use both ID and timestamp for reliable deduplication
@@ -182,16 +227,22 @@ export default function Home() {
 
       if (isCertainlyOurMessage) return;
 
+      // Check if this message is relevant to this user - must be in their channel or directly for them
+      const isRelevantMessage =
+        message.sender === username ||
+        (userChannel && message.channelId === userChannel) ||
+        message.targetUser === username;
+
+      if (!isRelevantMessage) {
+        console.log(`Skipping message not relevant to user ${username}:`, message.id);
+        return;
+      }
+
       // Ensure the message is marked as from Slack
       const slackMessage = {
         ...message,
         isFromSlack: true,
       };
-
-      // If this message has a target user and it's not for the current user, tag it
-      if (message.targetUser && message.targetUser !== username) {
-        slackMessage.text = `[To ${message.targetUser}] ${slackMessage.text}`;
-      }
 
       // Add the Slack message to our state
       setMessages(prevMessages => {
@@ -244,8 +295,10 @@ export default function Home() {
 
     // Manually fetch Slack messages periodically to ensure we have the latest
     const fetchSlackMessages = async () => {
+      if (!username) return;
+
       try {
-        const response = await fetch('/api/slack-chat');
+        const response = await fetch(`/api/slack-chat?username=${encodeURIComponent(username)}`);
 
         if (!response.ok) {
           throw new Error(`Failed to fetch Slack messages: ${response.status}`);
@@ -253,6 +306,8 @@ export default function Home() {
 
         const data = await response.json();
         const slackMessages = data.messages || [];
+
+        console.log(`Received ${slackMessages.length} messages for user ${username}`);
 
         // Merge with existing messages
         setMessages(prevMessages => {
@@ -324,8 +379,10 @@ export default function Home() {
 
     // Fetch initial data
     const fetchInitialMessages = async () => {
+      if (!username) return;
+
       try {
-        const response = await fetch('/api/slack-chat');
+        const response = await fetch(`/api/slack-chat?username=${encodeURIComponent(username)}`);
 
         if (!response.ok) {
           throw new Error(`Failed to fetch initial messages: ${response.status}`);
@@ -333,6 +390,8 @@ export default function Home() {
 
         const data = await response.json();
         const slackMessages = data.messages || [];
+
+        console.log(`Fetched ${slackMessages.length} initial messages for user ${username}`);
 
         // Merge with existing messages
         setMessages(prevMessages => {
@@ -445,6 +504,56 @@ export default function Home() {
     };
   }, []);
 
+  // Fetch user's dedicated channel
+  const fetchUserChannel = async () => {
+    if (!username) return;
+
+    console.log('Fetching channel for user:', username);
+    try {
+      const response = await fetch(`/api/user-channel?username=${encodeURIComponent(username)}`);
+      console.log('API response status:', response.status);
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('User channel API response:', data);
+
+        if (data.channelId) {
+          console.log('Setting userChannel state to:', data.channelId);
+          setUserChannel(data.channelId);
+          setUserChannelName(data.channelName || data.channelId);
+          console.log('Updated userChannel state');
+        } else {
+          console.log('No channelId in response, not updating state');
+        }
+      } else {
+        console.error('Failed to fetch user channel, status:', response.status);
+      }
+    } catch (error) {
+      console.error('Error fetching user channel:', error);
+    }
+  };
+
+  // Call this when username is set and when sending a message
+  useEffect(() => {
+    if (username) {
+      fetchUserChannel();
+
+      // Set up interval to periodically check for channel
+      const channelCheckInterval = setInterval(fetchUserChannel, 10000);
+      return () => clearInterval(channelCheckInterval);
+    }
+  }, [username]);
+
+  // Add an effect to refetch channel after sending a message
+  useEffect(() => {
+    if (messages.length > 0 && username && !userChannel) {
+      // If we have messages but no channel, try to fetch it
+      console.log('Message detected but no channel, fetching channel');
+      fetchUserChannel();
+    }
+  }, [messages, username, userChannel]);
+
+  // Also fetch channel after sending a message
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || isLoading) return;
@@ -479,6 +588,8 @@ export default function Home() {
 
       if (socketSent) {
         console.info('Message sent via socket');
+        // Fetch channel after sending message
+        setTimeout(fetchUserChannel, 2000);
         setIsLoading(false);
         return;
       }
@@ -517,6 +628,9 @@ export default function Home() {
       if (!response.ok) {
         throw new Error('Failed to send message to Slack');
       }
+
+      // Fetch channel after sending message
+      setTimeout(fetchUserChannel, 2000);
     } catch (error) {
       console.error('Error sending message:', error);
       setError('Failed to send message to Slack, but your message is saved locally');
@@ -530,7 +644,14 @@ export default function Home() {
   const handleSetUsername = (e: React.FormEvent) => {
     e.preventDefault();
     if (username.trim()) {
+      // Set flag that we're setting username
       setIsSettingUsername(false);
+
+      // Clear any old messages
+      localStorage.setItem('chat-messages', '[]');
+      setMessages([]);
+
+      console.log('Username set, messages cleared for fresh start');
     }
   };
 
@@ -538,31 +659,6 @@ export default function Home() {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setNewMessage(e.target.value);
   };
-
-  // Fetch user's dedicated channel
-  const fetchUserChannel = async () => {
-    if (!username) return;
-
-    try {
-      const response = await fetch(`/api/user-channel?username=${encodeURIComponent(username)}`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data.channelId) {
-          setUserChannel(data.channelId);
-          setUserChannelName(data.channelName);
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching user channel:', error);
-    }
-  };
-
-  // Call this when username is set
-  useEffect(() => {
-    if (username) {
-      fetchUserChannel();
-    }
-  }, [username]);
 
   // Add a status indicator for the connection mode
   const renderConnectionStatus = () => {
@@ -591,6 +687,124 @@ export default function Home() {
       );
     }
   };
+
+  // Add function to delete user channel
+  const handleDeleteChannel = async () => {
+    if (deleteConfirmation !== username) {
+      setError('Please enter your username correctly to confirm deletion');
+      return;
+    }
+
+    setIsDeletingChannel(true);
+    setError(null);
+    setSuccessMessage('');
+
+    try {
+      const response = await fetch(
+        `/api/user-channel?username=${encodeURIComponent(username)}&confirm=true`,
+        {
+          method: 'DELETE',
+        },
+      );
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        // Show success message first so user knows the deletion was successful
+        setSuccessMessage(
+          'Your channel has been successfully deleted. You will be logged out in 3 seconds...',
+        );
+
+        // Clear channel info
+        setUserChannel(null);
+        setUserChannelName(null);
+        setDeleteConfirmation('');
+        setIsDeletingChannel(false);
+
+        // Set a delay before logging out so the user can see the success message
+        setTimeout(() => {
+          // Clear username from localStorage
+          localStorage.removeItem('chat-username');
+
+          // Clear messages from localStorage
+          localStorage.removeItem('chat-messages');
+
+          // Ensure localStorage is empty by setting an empty array
+          localStorage.setItem('chat-messages', '[]');
+
+          // Disconnect from socket
+          disconnectSocket();
+
+          // Reset state
+          setUsername('');
+          setMessages([]);
+          setUserChannel(null);
+          setUserChannelName(null);
+          setIsSettingUsername(true);
+          sentMessageIds.clear();
+          slackTimestamps.clear();
+          setSuccessMessage('');
+          setError(null);
+          setIsConnected(false);
+
+          console.log(
+            'User logged out after channel deletion, cleared session data and disconnected socket',
+          );
+          setIsModalOpen(false);
+
+          // Force reload to ensure clean state
+          window.location.reload();
+        }, 3000);
+      } else {
+        setError(data.error || 'Failed to delete channel');
+        setIsDeletingChannel(false);
+      }
+    } catch (error) {
+      console.error('Error deleting channel:', error);
+      setError('An error occurred while trying to delete the channel');
+      setIsDeletingChannel(false);
+    }
+  };
+
+  // Handle logout confirmation
+  const confirmLogout = () => {
+    // Clear username from localStorage
+    localStorage.removeItem('chat-username');
+
+    // Clear messages from localStorage
+    localStorage.removeItem('chat-messages');
+
+    // Ensure localStorage is empty by setting an empty array
+    localStorage.setItem('chat-messages', '[]');
+
+    // Disconnect from socket
+    disconnectSocket();
+
+    // Reset state
+    setUsername('');
+    setMessages([]);
+    setUserChannel(null);
+    setUserChannelName(null);
+    setIsSettingUsername(true);
+    sentMessageIds.clear();
+    slackTimestamps.clear();
+    setSuccessMessage('');
+    setError(null);
+    setIsConnected(false);
+
+    console.log('User logged out, cleared session data and disconnected socket');
+    setIsLogoutModalOpen(false);
+
+    // Force reload to ensure clean state
+    window.location.reload();
+  };
+
+  // Reset channel information when username changes
+  useEffect(() => {
+    // Reset channel info when username changes
+    setUserChannel(null);
+    setUserChannelName(null);
+  }, [username]);
 
   if (isSettingUsername) {
     return (
@@ -645,7 +859,55 @@ export default function Home() {
                 </span>
               )}
             </div>
-            <span className="text-sm text-gray-500">Logged in as {username}</span>
+            <div className="flex items-center space-x-3">
+              {userChannel ? (
+                <button
+                  onClick={() => setIsModalOpen(true)}
+                  className="flex items-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-md transition-colors hover:bg-red-700 focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:outline-none"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="mr-1 h-5 w-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
+                  </svg>
+                  Delete Channel
+                </button>
+              ) : (
+                <span className="text-sm text-gray-400">No channel created yet</span>
+              )}
+              <div className="flex items-center space-x-2">
+                <span className="text-sm text-gray-500">Logged in as {username}</span>
+                <button
+                  onClick={() => setIsLogoutModalOpen(true)}
+                  className="ml-2 flex items-center rounded-md bg-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-300 focus:ring-2 focus:ring-gray-400 focus:outline-none"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="mr-1 h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                    />
+                  </svg>
+                  Logout
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -661,6 +923,38 @@ export default function Home() {
                 <span className="block sm:inline">{error}</span>
               </div>
             )}
+
+            {successMessage && (
+              <div className="relative mb-6 rounded-lg border-2 border-green-300 bg-green-50 px-4 py-4 text-green-800 shadow-md">
+                <div className="flex items-center">
+                  <svg
+                    className="mr-2 h-5 w-5 text-green-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M5 13l4 4L19 7"
+                    ></path>
+                  </svg>
+                  <span className="font-medium">{successMessage}</span>
+                </div>
+              </div>
+            )}
+
+            {userChannel && (
+              <div className="relative mb-4 rounded border border-blue-200 bg-blue-50 px-4 py-3 text-blue-700">
+                <span className="block sm:inline">
+                  Your messages are sent to the Slack channel:{' '}
+                  <strong>{userChannelName || userChannel}</strong>
+                </span>
+              </div>
+            )}
+
             {messages.length === 0 ? (
               <div className="flex h-full items-center justify-center">
                 <p className="text-center text-gray-500">
@@ -748,6 +1042,77 @@ export default function Home() {
 
       {/* Socket Debug Component */}
       <SocketDebug />
+
+      {/* Delete Channel Modal */}
+      {isModalOpen && (
+        <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
+            <h3 className="mb-4 text-lg font-bold text-red-600">Delete Channel Confirmation</h3>
+            <p className="mb-4">
+              Are you sure you want to delete your Slack channel? This action cannot be undone.
+            </p>
+            <p className="mb-2 text-sm text-gray-600">
+              <strong>Important:</strong> Deleting your channel will also log you out of the
+              application.
+            </p>
+            <p className="mb-4 text-sm text-gray-600">
+              Please type your username <strong>{username}</strong> to confirm deletion:
+            </p>
+            <input
+              type="text"
+              value={deleteConfirmation}
+              onChange={e => setDeleteConfirmation(e.target.value)}
+              className="mb-4 w-full rounded border border-gray-300 p-2"
+              placeholder="Enter your username to confirm"
+            />
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={() => {
+                  setIsModalOpen(false);
+                  setDeleteConfirmation('');
+                }}
+                className="rounded bg-gray-300 px-4 py-2 hover:bg-gray-400"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteChannel}
+                disabled={isDeletingChannel || deleteConfirmation !== username}
+                className="rounded bg-red-500 px-4 py-2 text-white hover:bg-red-600 disabled:bg-red-300"
+              >
+                {isDeletingChannel ? 'Deleting...' : 'Confirm Delete & Logout'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Logout Confirmation Modal */}
+      {isLogoutModalOpen && (
+        <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
+            <h3 className="mb-4 text-lg font-bold text-gray-700">Confirm Logout</h3>
+            <p className="mb-6">
+              Are you sure you want to log out? This will clear your message history and you&apos;ll
+              need to enter your username again to continue.
+            </p>
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={() => setIsLogoutModalOpen(false)}
+                className="rounded bg-gray-300 px-4 py-2 hover:bg-gray-400"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmLogout}
+                className="rounded bg-blue-500 px-4 py-2 text-white hover:bg-blue-600"
+              >
+                Confirm Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

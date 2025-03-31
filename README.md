@@ -7,6 +7,7 @@ web interface and Slack channels.
 
 - **Real-time Messaging**: Messages sent from the web app appear in Slack and vice versa
 - **User-specific Channels**: Each user gets their own dedicated Slack channel
+- **Channel Management**: Users can delete their channels when no longer needed
 - **App Home Integration**: Users can see their channel information directly in the Slack App Home
 - **Socket Mode**: Uses Slack's Socket Mode for reliable real-time communication
 - **Persistent Message History**: Messages are cached and available to new users who join
@@ -42,13 +43,23 @@ pnpm install
 
 Navigate to "OAuth & Permissions" and add these Bot Token Scopes:
 
-- `channels:manage` - To create user-specific channels
+- `channels:manage` - To create and archive user-specific channels
 - `channels:read` - To read channel information
 - `chat:write` - To send messages to channels
 - `im:write` - To send direct messages
 - `views:write` - To update the App Home
 - `app_mentions:read` - To receive mention notifications
 - `users:read` - To read user information
+- `channels:write.invites` - To invite users to channels
+
+#### Event Subscriptions
+
+In the "Event Subscriptions" section, subscribe to these bot events:
+
+- `app_home_opened` - To update the App Home when a user opens it
+- `message.channels` - To receive channel messages
+- `channel_archived` - To clean up when channels are archived
+- `channel_deleted` - To clean up when channels are deleted (rare)
 
 #### Enable Socket Mode (if you don't have one, and we do have one)
 
