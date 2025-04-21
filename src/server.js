@@ -659,9 +659,29 @@ app.prepare().then(() => {
   global.socketIO = io;
 
   // Start the server
-  const port = process.env.PORT || 3000;
-  server.listen(port, err => {
-    if (err) throw err;
-    console.log(`> Ready on http://localhost:${port}`);
-  });
+  const startServer = port => {
+    server.listen(port, err => {
+      if (err) {
+        if (err.code === 'EADDRINUSE') {
+          console.log(`⚠️ Port ${port} is already in use. Trying alternative port...`);
+          if (port === 3000) {
+            startServer(3030);
+          } else {
+            console.error(
+              `❌ Alternative port ${port} is also in use. Please specify a different port using the PORT environment variable.`,
+            );
+            process.exit(1);
+          }
+        } else {
+          console.error('Server error:', err);
+          throw err;
+        }
+      } else {
+        console.log(`> Ready on http://localhost:${port}`);
+      }
+    });
+  };
+
+  const defaultPort = process.env.PORT || 3000;
+  startServer(defaultPort);
 });

@@ -810,7 +810,9 @@ export default function Home() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-100 p-4">
         <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-          <h2 className="mb-4 text-2xl font-bold text-gray-800">Welcome to Chat</h2>
+          <h2 className="mb-4 bg-amber-400 pb-8 text-2xl font-bold text-gray-800">
+            Welcome to Chat
+          </h2>
           <form onSubmit={handleSetUsername} className="space-y-4">
             <div>
               <label htmlFor="username" className="block text-sm font-medium text-gray-700">
