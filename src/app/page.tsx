@@ -846,7 +846,7 @@ export default function Home() {
           <div className="flex items-center justify-between">
             <div className="flex items-center">
               <MessageSquare className="h-8 w-8 text-blue-600" />
-              <h1 className="ml-3 text-2xl font-bold text-gray-900">Chat App</h1>
+              <h1 className="ml-3 text-2xl font-bold text-gray-900">- Chat App -</h1>
               {localModeOnly && (
                 <span className="ml-3 rounded-full bg-yellow-100 px-2 py-1 text-xs text-yellow-600">
                   Local Mode Only
