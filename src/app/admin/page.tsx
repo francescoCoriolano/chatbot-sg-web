@@ -80,7 +80,7 @@ export default function AdminPage() {
   };
 
   return (
-    <div className="container mx-auto max-w-2xl p-4">
+    <div className="container mx-auto max-w-2xl p-4 text-black">
       <h1 className="mb-6 text-2xl font-bold">Admin - Configure Default Users</h1>
 
       {error && (
@@ -145,7 +145,7 @@ export default function AdminPage() {
         </button>
       </div>
 
-      <div className="rounded bg-gray-100 p-4">
+      <div className="rounded bg-gray-100 p-4 text-black">
         <h3 className="mb-2 font-semibold">How to find Slack User IDs</h3>
         <ol className="list-inside list-decimal text-sm">
           <li>Open Slack in a browser</li>

@@ -15,7 +15,7 @@ export default function SocketDebug() {
   } | null>(null);
   const [lastChecked, setLastChecked] = useState<string>(new Date().toISOString());
   const [connectionCount, setConnectionCount] = useState<number | null>(null);
-
+  //console.log('serverStatus', serverStatus);
   // Check connection status every 5 seconds
   useEffect(() => {
     const checkConnection = async () => {
@@ -40,6 +40,10 @@ export default function SocketDebug() {
 
     // Check immediately
     checkConnection();
+
+    // TO DO:
+    // 1. Add a chat widget that will trigger chat window to open ( useState needed)
+    // 2. Include Welcome form in chat window
 
     // Set up interval
     const interval = setInterval(checkConnection, 5000);

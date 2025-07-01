@@ -25,8 +25,8 @@ const slackUserIds = {};
 
 // Define default users that will be added to all channels
 const DEFAULT_USERS = [
-  'U08KSE3CFE1', // Pavlo
-  'U03PFB0HHRA', // Francesco
+  //'U08KSE3CFE1', // Pavlo
+  'U08L5K4DDNV', // Francesco
 ];
 
 // Make these accessible globally
