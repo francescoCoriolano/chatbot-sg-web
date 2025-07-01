@@ -41,6 +41,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [localModeOnly, setLocalModeOnly] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageInputRef = useRef<HTMLInputElement>(null);
   const [slackTypingUsers, setSlackTypingUsers] = useState<TypingUser[]>([]);
   const socketRef = useRef<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -652,6 +653,11 @@ export default function Home() {
       setMessages([]);
 
       console.log('Username set, messages cleared for fresh start');
+
+      // Focus the message input after a short delay to ensure DOM is updated
+      setTimeout(() => {
+        messageInputRef.current?.focus();
+      }, 100);
     }
   };
 
@@ -805,6 +811,15 @@ export default function Home() {
     setUserChannel(null);
     setUserChannelName(null);
   }, [username]);
+
+  // Focus message input when chat becomes available
+  useEffect(() => {
+    if (!isSettingUsername && messageInputRef.current) {
+      setTimeout(() => {
+        messageInputRef.current?.focus();
+      }, 100);
+    }
+  }, [isSettingUsername]);
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-100">
@@ -1021,16 +1036,19 @@ export default function Home() {
               <form onSubmit={handleSendMessage} className="border-t p-4">
                 <div className="flex space-x-4">
                   <input
+                    ref={messageInputRef}
                     type="text"
                     value={newMessage}
                     onChange={handleInputChange}
                     placeholder="Type your message..."
                     className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                    disabled={isLoading || !isConnected}
+                    disabled={isLoading}
+                    //disabled={isLoading || !isConnected}
                   />
                   <button
                     type="submit"
-                    disabled={isLoading || !newMessage.trim() || !isConnected}
+                    disabled={isLoading || !newMessage.trim()}
+                    //disabled={isLoading || !newMessage.trim() || !isConnected}
                     className="inline-flex items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors duration-200 hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                     title="Send message"
                   >
