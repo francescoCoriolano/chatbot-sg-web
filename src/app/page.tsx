@@ -63,6 +63,9 @@ export default function Home() {
   // Add state for chat window visibility
   const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
 
+  // Add state for selected question
+  const [selectedQuestion, setSelectedQuestion] = useState<string | null>(null);
+
   // Reference to track if component is mounted
   const mounted = useRef(true);
   // Reference for chat window to detect outside clicks
@@ -225,21 +228,49 @@ export default function Home() {
 
     // Handle Slack messages
     const onSlackMessage = (message: Message) => {
+      console.log('🎯 SLACK MESSAGE RECEIVED:', {
+        messageId: message.id,
+        sender: message.sender,
+        text: message.text,
+        channelId: message.channelId,
+        targetUser: message.targetUser,
+        currentUser: username,
+        currentUserChannel: userChannel,
+      });
+
       // Only skip if we're confident it's our message (has our clientMessageId or slackTs)
       const isCertainlyOurMessage =
         (message.sender === username && message.id && sentMessageIds.has(message.id)) ||
         (message.id && slackTimestamps.has(message.id));
 
-      if (isCertainlyOurMessage) return;
+      if (isCertainlyOurMessage) {
+        console.log('🎯 SKIPPING - This is certainly our own message');
+        return;
+      }
 
-      // Check if this message is relevant to this user - must be in their channel or directly for them
+      // Make message filtering more permissive for Slack messages
       const isRelevantMessage =
         message.sender === username ||
         (userChannel && message.channelId === userChannel) ||
-        message.targetUser === username;
+        message.targetUser === username ||
+        // Also accept messages from channels that contain chat-app-[username]
+        (message.channelId && message.channelId.includes(`chat-app-${username}`)) ||
+        // Accept all Slack messages when no channel is set (during initial setup)
+        (!userChannel && message.isFromSlack);
+
+      console.log('🎯 RELEVANCE CHECK:', {
+        isRelevantMessage,
+        reasons: {
+          senderMatch: message.sender === username,
+          channelMatch: userChannel && message.channelId === userChannel,
+          targetUserMatch: message.targetUser === username,
+          channelNameMatch: message.channelId && message.channelId.includes(`chat-app-${username}`),
+          noChannelSetAndFromSlack: !userChannel && message.isFromSlack,
+        },
+      });
 
       if (!isRelevantMessage) {
-        console.log(`Skipping message not relevant to user ${username}:`, message.id);
+        console.log(`🎯 SKIPPING - Message not relevant to user ${username}:`, message.id);
         return;
       }
 
@@ -249,8 +280,12 @@ export default function Home() {
         isFromSlack: true,
       };
 
+      console.log('🎯 ADDING SLACK MESSAGE TO STATE:', slackMessage);
+
       // Add the Slack message to our state
       setMessages(prevMessages => {
+        console.log('🎯 CURRENT MESSAGES COUNT:', prevMessages.length);
+
         // Check if we already have this message (prevent duplicates)
         const isDuplicate = prevMessages.some(
           msg =>
@@ -262,7 +297,10 @@ export default function Home() {
               ) < 5000),
         );
 
-        if (isDuplicate) return prevMessages;
+        if (isDuplicate) {
+          console.log('🎯 SKIPPING - Message already exists (duplicate)');
+          return prevMessages;
+        }
 
         // If the message was very recent, show typing indicator
         const messageTime = new Date(slackMessage.timestamp).getTime();
@@ -292,9 +330,12 @@ export default function Home() {
 
         // Add new message and sort
         const newMessages = [...prevMessages, slackMessage];
-        return newMessages.sort(
+        const sortedMessages = newMessages.sort(
           (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
         );
+
+        console.log('🎯 NEW MESSAGES COUNT AFTER ADD:', sortedMessages.length);
+        return sortedMessages;
       });
     };
 
@@ -648,20 +689,135 @@ export default function Home() {
 
   const handleSetUsername = (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('📝 === HANDLE SET USERNAME CALLED ===');
+    console.log('📝 Username entered:', username.trim());
+    console.log('📝 Current selectedQuestion:', selectedQuestion);
+    console.log('📝 Current messages length:', messages.length);
+
     if (username.trim()) {
       // Set flag that we're setting username
       setIsSettingUsername(false);
+      console.log('📝 Set isSettingUsername to false');
 
       // Clear any old messages
       localStorage.setItem('chat-messages', '[]');
-      setMessages([]);
+      console.log('📝 Cleared localStorage messages');
 
-      console.log('Username set, messages cleared for fresh start');
+      console.log('📝 Username set, messages cleared for fresh start');
+
+      // If there's a selected question, send it immediately to create channel
+      if (selectedQuestion) {
+        console.log('🚀 PROCESSING SELECTED QUESTION:', selectedQuestion);
+        console.log('🚀 Username:', username);
+        console.log('🚀 Current messages length:', messages.length);
+
+        const messageId = Date.now().toString();
+        const localMessage: Message = {
+          id: messageId,
+          text: selectedQuestion,
+          sender: username,
+          timestamp: new Date().toISOString(),
+          isFromSlack: false,
+        };
+
+        console.log('🚀 Created local message object:', localMessage);
+
+        // Add to sent messages tracking
+        sentMessageIds.add(messageId);
+        console.log('🚀 Added to sentMessageIds:', messageId);
+
+        // Clear input field and add message to local state immediately for better UX
+        setMessages([localMessage]);
+        console.log('🚀 Added selected question to local messages');
+
+        console.log('🚀 Sending selected question to create channel:', selectedQuestion);
+
+        // Send the message using the same flow as regular messages
+        const sendSelectedQuestion = async () => {
+          console.log('🚀 Starting sendSelectedQuestion function...');
+          setIsLoading(true);
+          setError(null);
+
+          try {
+            // Try to send via socket first if we're in socket mode (same as regular messages)
+            const socketSent = sendMessageViaSocket(localMessage);
+
+            if (socketSent) {
+              console.log('🚀 ✅ Selected question sent via socket');
+              // Fetch channel after sending message
+              setTimeout(fetchUserChannel, 2000);
+              setIsLoading(false);
+              setSelectedQuestion(null);
+              return;
+            }
+
+            // Fallback to API call if socket is not available or failed
+            console.log('🚀 Falling back to API call for selected question');
+
+            const response = await fetch('/api/slack-chat', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                message: selectedQuestion,
+                sender: username,
+                userId: 'user_' + messageId,
+                clientMessageId: messageId,
+              }),
+            });
+
+            const data = await response.json();
+            console.log('🚀 API response data:', data);
+
+            // If message was sent to Slack, track the timestamp
+            if (data.slackStatus?.success && data.slackStatus.slackTs) {
+              slackTimestamps.add(data.slackStatus.slackTs);
+              console.log('🚀 Added slack timestamp:', data.slackStatus.slackTs);
+            }
+
+            // Check for local-only mode
+            if (data.localOnly) {
+              setLocalModeOnly(true);
+              setError(
+                "Messages are only saved locally. The bot doesn't have permission to send to Slack.",
+              );
+            }
+
+            if (!response.ok) {
+              throw new Error('Failed to send selected question to Slack');
+            }
+
+            console.log('🚀 ✅ Selected question sent successfully via API');
+
+            // Fetch channel after sending message
+            setTimeout(fetchUserChannel, 2000);
+          } catch (error) {
+            console.error('🚀 ❌ Error sending selected question:', error);
+            setError('Failed to send question to Slack, but your message is saved locally');
+          } finally {
+            if (mounted.current) {
+              setIsLoading(false);
+            }
+            // Clear the selected question AFTER sending
+            console.log('🚀 Clearing selectedQuestion...');
+            setSelectedQuestion(null);
+          }
+        };
+
+        // Send immediately
+        console.log('🚀 Calling sendSelectedQuestion immediately...');
+        sendSelectedQuestion();
+      } else {
+        console.log('🚀 No selected question, starting with empty messages');
+        // No selected question, start with empty messages
+        setMessages([]);
+      }
 
       // Focus the message input after a short delay to ensure DOM is updated
       setTimeout(() => {
         messageInputRef.current?.focus();
-      }, 100);
+      }, 200);
     }
   };
 
@@ -756,6 +912,7 @@ export default function Home() {
           setSuccessMessage('');
           setError(null);
           setIsConnected(false);
+          setSelectedQuestion(null);
 
           console.log(
             'User logged out after channel deletion, cleared session data and disconnected socket',
@@ -801,6 +958,7 @@ export default function Home() {
     setSuccessMessage('');
     setError(null);
     setIsConnected(false);
+    // selectedQuestion will be reset on page reload
 
     console.log('User logged out, cleared session data and disconnected socket');
     setIsLogoutModalOpen(false);
@@ -814,6 +972,7 @@ export default function Home() {
     // Reset channel info when username changes
     setUserChannel(null);
     setUserChannelName(null);
+    // DON'T reset selectedQuestion here - let it persist until message is sent
   }, [username]);
 
   // Focus message input when chat becomes available
@@ -824,6 +983,20 @@ export default function Home() {
       }, 100);
     }
   }, [isSettingUsername]);
+
+  // Debug message state changes
+  useEffect(() => {
+    console.log(
+      '🎯 DEBUG - Messages state changed:',
+      messages.length,
+      'messages, selectedQuestion:',
+      selectedQuestion,
+    );
+    console.log('🎯 DEBUG - Messages array:', messages);
+    if (messages.length > 0) {
+      console.log('🎯 DEBUG - First message:', messages[0]);
+    }
+  }, [messages, selectedQuestion]);
 
   // Handle clicking outside chat window to close it
   useEffect(() => {
@@ -857,6 +1030,27 @@ export default function Home() {
   // Close chat window
   const closeChat = () => {
     setIsChatOpen(false);
+  };
+
+  const handleQuestionClick = (question: string) => {
+    console.log('🔥 === Question clicked ===');
+    console.log('🔥 Question:', question);
+    console.log('🔥 Current selectedQuestion before:', selectedQuestion);
+    console.log('🔥 Current messages length before:', messages.length);
+    console.log('🔥 Current isSettingUsername:', isSettingUsername);
+
+    setSelectedQuestion(question);
+    setIsChatOpen(true);
+
+    console.log('🔥 Set selectedQuestion to:', question);
+    console.log('🔥 Opened chat window');
+
+    // Focus message input when opening chat (if not setting username)
+    if (!isSettingUsername) {
+      setTimeout(() => {
+        messageInputRef.current?.focus();
+      }, 100);
+    }
   };
 
   return (
@@ -1009,62 +1203,44 @@ export default function Home() {
                     </div>
                   )}
 
-                  {userChannel && (
-                    <div className="relative rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs text-blue-700">
-                      <span className="block">
-                        Connected to: <strong>{userChannelName || userChannel}</strong>
-                      </span>
-                    </div>
-                  )}
+                  {messages.map(message => {
+                    // Debug log for message rendering
+                    console.log(
+                      `🎨 RENDERING message - id: ${message.id}, from: ${message.sender}, text: "${message.text}", isFromSlack: ${message.isFromSlack}`,
+                    );
 
-                  {messages.length === 0 ? (
-                    <div className="flex h-full items-center justify-center">
-                      <p className="text-center text-xs text-gray-500">
-                        No messages yet. Start chatting!
-                      </p>
-                    </div>
-                  ) : (
-                    messages.map(message => {
-                      // Debug log for message rendering
-                      console.log(
-                        `Rendering message - id: ${message.id}, from: ${message.sender}, isFromSlack: ${message.isFromSlack}`,
-                      );
-
-                      return (
+                    return (
+                      <div
+                        key={message.id}
+                        className={`flex ${message.sender === username ? 'justify-end' : 'justify-start'}`}
+                      >
                         <div
-                          key={message.id}
-                          className={`flex ${message.sender === username ? 'justify-end' : 'justify-start'}`}
+                          className={`message-bubble max-w-xs rounded-lg px-3 py-2 text-xs shadow-sm ${
+                            message.sender === username
+                              ? 'bg-blue-600 text-white'
+                              : message.isFromSlack
+                                ? 'border border-green-200 bg-green-100 text-gray-900'
+                                : 'border border-gray-200 bg-white text-gray-900'
+                          }`}
                         >
-                          <div
-                            className={`message-bubble max-w-xs rounded-lg px-3 py-2 text-xs shadow-sm ${
-                              message.sender === username
-                                ? 'bg-blue-600 text-white'
-                                : message.isFromSlack
-                                  ? 'border border-green-200 bg-green-100 text-gray-900'
-                                  : 'border border-gray-200 bg-white text-gray-900'
-                            }`}
-                          >
-                            <div className="mb-1 text-xs font-medium">
-                              {message.sender}
-                              {message.isFromSlack && (
-                                <span className="ml-1 rounded bg-green-200 px-1 text-xs text-green-800">
-                                  Slack
-                                </span>
-                              )}
-                              <span className="ml-1 text-xs opacity-75">
-                                {formatDistanceToNow(new Date(message.timestamp), {
-                                  addSuffix: true,
-                                })}
+                          <div className="mb-1 text-xs font-medium">
+                            {message.sender}
+                            {message.isFromSlack && (
+                              <span className="ml-1 rounded bg-green-200 px-1 text-xs text-green-800">
+                                Slack
                               </span>
-                            </div>
-                            <p className="text-xs break-words whitespace-pre-wrap">
-                              {message.text}
-                            </p>
+                            )}
+                            <span className="ml-1 text-xs opacity-75">
+                              {formatDistanceToNow(new Date(message.timestamp), {
+                                addSuffix: true,
+                              })}
+                            </span>
                           </div>
+                          <p className="text-xs break-words whitespace-pre-wrap">{message.text}</p>
                         </div>
-                      );
-                    })
-                  )}
+                      </div>
+                    );
+                  })}
                   <div ref={messagesEndRef} />
                 </div>
 
@@ -1112,13 +1288,78 @@ export default function Home() {
         </div>
       )}
 
-      {/* Chat Trigger Bar - Fixed at bottom of screen */}
+      {/* Chat Trigger Bar - Fixed at bottom of screen with sliding animation */}
       <div className="fixed right-0 bottom-0 left-0 z-30">
-        <div
-          className="flex h-8 cursor-pointer items-center justify-center bg-blue-600 text-white transition-colors hover:bg-blue-700"
-          onClick={toggleChat}
-        >
-          <span className="text-xs font-medium">Can I help you?</span>
+        <div className="h-8 overflow-hidden bg-blue-600 text-white">
+          <div className="sliding-questions flex h-full items-center whitespace-nowrap">
+            {/* First set of questions */}
+            <div
+              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-blue-700"
+              onClick={() => handleQuestionClick('Can you tell me more about Studio Graphene?')}
+            >
+              <span className="text-xs font-bold">Can you tell me more about Studio Graphene?</span>
+            </div>
+            <div className="mx-4 h-4 w-px flex-shrink-0 bg-blue-500"></div>
+            <div
+              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-blue-700"
+              onClick={() => handleQuestionClick('What AI services do you currently offer?')}
+            >
+              <span className="text-xs font-bold">What AI services do you currently offer?</span>
+            </div>
+            <div className="mx-4 h-4 w-px flex-shrink-0 bg-blue-500"></div>
+            <div
+              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-blue-700"
+              onClick={() => handleQuestionClick('What technologies do you use?')}
+            >
+              <span className="text-xs font-bold">What technologies do you use?</span>
+            </div>
+            <div className="mx-4 h-4 w-px flex-shrink-0 bg-blue-500"></div>
+
+            {/* Duplicate set for seamless looping */}
+            <div
+              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-blue-700"
+              onClick={() => handleQuestionClick('Can you tell me more about Studio Graphene?')}
+            >
+              <span className="text-xs font-bold">Can you tell me more about Studio Graphene?</span>
+            </div>
+            <div className="mx-4 h-4 w-px flex-shrink-0 bg-blue-500"></div>
+            <div
+              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-blue-700"
+              onClick={() => handleQuestionClick('What AI services do you currently offer?')}
+            >
+              <span className="text-xs font-bold">What AI services do you currently offer?</span>
+            </div>
+            <div className="mx-4 h-4 w-px flex-shrink-0 bg-blue-500"></div>
+            <div
+              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-blue-700"
+              onClick={() => handleQuestionClick('What technologies do you use?')}
+            >
+              <span className="text-xs font-bold">What technologies do you use?</span>
+            </div>
+            <div className="mx-4 h-4 w-px flex-shrink-0 bg-blue-500"></div>
+
+            {/* Third set for extra seamless looping */}
+            <div
+              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-blue-700"
+              onClick={() => handleQuestionClick('Can you tell me more about Studio Graphene?')}
+            >
+              <span className="text-xs font-bold">Can you tell me more about Studio Graphene?</span>
+            </div>
+            <div className="mx-4 h-4 w-px flex-shrink-0 bg-blue-500"></div>
+            <div
+              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-blue-700"
+              onClick={() => handleQuestionClick('What AI services do you currently offer?')}
+            >
+              <span className="text-xs font-bold">What AI services do you currently offer?</span>
+            </div>
+            <div className="mx-4 h-4 w-px flex-shrink-0 bg-blue-500"></div>
+            <div
+              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-blue-700"
+              onClick={() => handleQuestionClick('What technologies do you use?')}
+            >
+              <span className="text-xs font-bold">What technologies do you use?</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1195,6 +1436,48 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      <style jsx>{`
+        @keyframes slide-right {
+          0% {
+            transform: translateX(-33.333%);
+          }
+          100% {
+            transform: translateX(0);
+          }
+        }
+
+        .sliding-questions {
+          animation: slide-right 20s linear infinite;
+        }
+
+        .sliding-questions:hover {
+          animation-play-state: paused;
+        }
+
+        .typing-dot {
+          animation: typing 1.4s infinite ease-in-out;
+        }
+
+        .typing-dot:nth-child(1) {
+          animation-delay: -0.32s;
+        }
+
+        .typing-dot:nth-child(2) {
+          animation-delay: -0.16s;
+        }
+
+        @keyframes typing {
+          0%,
+          80%,
+          100% {
+            opacity: 0.3;
+          }
+          40% {
+            opacity: 1;
+          }
+        }
+      `}</style>
     </div>
   );
 }
