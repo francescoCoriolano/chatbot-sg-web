@@ -672,23 +672,23 @@ export default function Home() {
 
     if (socketConnected) {
       return (
-        <div className="flex items-center text-xs text-green-600">
-          <div className="mr-1 h-2 w-2 rounded-full bg-green-600"></div>
-          Live mode
+        <div className="flex items-center text-xs text-white">
+          <div className="mr-1 h-1.5 w-1.5 rounded-full bg-green-400"></div>
+          Live
         </div>
       );
     } else if (usingFallbackMode) {
       return (
-        <div className="flex items-center text-xs text-amber-600">
-          <div className="mr-1 h-2 w-2 rounded-full bg-amber-600"></div>
-          Polling mode
+        <div className="flex items-center text-xs text-white">
+          <div className="mr-1 h-1.5 w-1.5 rounded-full bg-amber-400"></div>
+          Polling
         </div>
       );
     } else {
       return (
-        <div className="flex items-center text-xs text-red-600">
-          <div className="mr-1 h-2 w-2 rounded-full bg-red-600"></div>
-          Disconnected
+        <div className="flex items-center text-xs text-white">
+          <div className="mr-1 h-1.5 w-1.5 rounded-full bg-red-400"></div>
+          Offline
         </div>
       );
     }
@@ -900,31 +900,24 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="mx-auto w-full max-w-7xl flex-1 px-4 py-6">
-        <div className="flex h-[calc(100vh-200px)] flex-col rounded-lg bg-white shadow-xl">
+      {/* Chatbot Window - Fixed position bottom right */}
+      <div className="fixed right-4 bottom-4 z-40">
+        <div className="flex h-96 w-80 flex-col rounded-lg border border-gray-200 bg-white shadow-2xl">
           {isSettingUsername ? (
-            <div className="flex h-full items-center justify-center">
-              <div className="w-full max-w-md rounded-lg bg-white p-8 shadow-xl">
-                <div className="text-center">
-                  <MessageSquare className="mx-auto mb-4 h-12 w-12 text-blue-600" />
-                  <h2 className="mb-2 text-3xl font-bold text-gray-900">Welcome to Chat</h2>
-                  <p className="mb-6 text-gray-600">Enter your username to start chatting</p>
-                </div>
+            <div className="flex h-full items-center justify-center p-6">
+              <div className="w-full text-center">
+                <MessageSquare className="mx-auto mb-3 h-8 w-8 text-blue-600" />
+                <h2 className="mb-2 text-lg font-bold text-gray-900">Welcome to Chat</h2>
+                <p className="mb-4 text-sm text-gray-600">Enter your username to start</p>
 
-                <form onSubmit={handleSetUsername} className="space-y-4">
+                <form onSubmit={handleSetUsername} className="space-y-3">
                   <div>
-                    <label
-                      htmlFor="username"
-                      className="mb-2 block text-sm font-medium text-gray-700"
-                    >
-                      Choose your username
-                    </label>
                     <input
                       type="text"
                       id="username"
                       value={username}
                       onChange={e => setUsername(e.target.value)}
-                      className="block w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-900 shadow-sm transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                       placeholder="Enter your username"
                       autoFocus
                     />
@@ -932,7 +925,7 @@ export default function Home() {
                   <button
                     type="submit"
                     disabled={!username.trim()}
-                    className="flex w-full items-center justify-center rounded-lg border border-transparent bg-blue-600 px-4 py-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                    className="flex w-full items-center justify-center rounded-lg border border-transparent bg-blue-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <MessageSquare className="mr-2 h-4 w-4" />
                     Start Chatting
@@ -942,51 +935,46 @@ export default function Home() {
             </div>
           ) : (
             <>
-              <div className="flex-1 space-y-4 overflow-y-auto p-4">
+              {/* Chat Header */}
+              <div className="rounded-t-lg bg-blue-600 px-4 py-3 text-white">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <MessageSquare className="mr-2 h-5 w-5" />
+                    <span className="text-sm font-medium">Chat</span>
+                  </div>
+                  <div className="flex items-center space-x-2">{renderConnectionStatus()}</div>
+                </div>
+              </div>
+
+              {/* Messages Area */}
+              <div className="flex-1 space-y-2 overflow-y-auto bg-gray-50 p-3">
                 {error && (
                   <div
-                    className="relative rounded border border-yellow-200 bg-yellow-50 px-4 py-3 text-yellow-700"
+                    className="relative rounded border border-yellow-200 bg-yellow-50 px-2 py-1 text-xs text-yellow-700"
                     role="alert"
                   >
-                    <span className="block sm:inline">{error}</span>
+                    <span className="block">{error}</span>
                   </div>
                 )}
 
                 {successMessage && (
-                  <div className="relative mb-6 rounded-lg border-2 border-green-300 bg-green-50 px-4 py-4 text-green-800 shadow-md">
-                    <div className="flex items-center">
-                      <svg
-                        className="mr-2 h-5 w-5 text-green-600"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                        xmlns="http://www.w3.org/2000/svg"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M5 13l4 4L19 7"
-                        ></path>
-                      </svg>
-                      <span className="font-medium">{successMessage}</span>
-                    </div>
+                  <div className="relative rounded border border-green-200 bg-green-50 px-2 py-1 text-xs text-green-800">
+                    <span className="block">{successMessage}</span>
                   </div>
                 )}
 
                 {userChannel && (
-                  <div className="relative mb-4 rounded border border-blue-200 bg-blue-50 px-4 py-3 text-blue-700">
-                    <span className="block sm:inline">
-                      Your messages are sent to the Slack channel:{' '}
-                      <strong>{userChannelName || userChannel}</strong>
+                  <div className="relative rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs text-blue-700">
+                    <span className="block">
+                      Connected to: <strong>{userChannelName || userChannel}</strong>
                     </span>
                   </div>
                 )}
 
                 {messages.length === 0 ? (
                   <div className="flex h-full items-center justify-center">
-                    <p className="text-center text-gray-500">
-                      No messages yet. Be the first to send a message!
+                    <p className="text-center text-xs text-gray-500">
+                      No messages yet. Start chatting!
                     </p>
                   </div>
                 ) : (
@@ -1002,29 +990,28 @@ export default function Home() {
                         className={`flex ${message.sender === username ? 'justify-end' : 'justify-start'}`}
                       >
                         <div
-                          className={`message-bubble max-w-sm rounded-lg px-4 py-2 shadow ${
+                          className={`message-bubble max-w-xs rounded-lg px-3 py-2 text-xs shadow-sm ${
                             message.sender === username
                               ? 'bg-blue-600 text-white'
                               : message.isFromSlack
                                 ? 'border border-green-200 bg-green-100 text-gray-900'
-                                : 'border border-gray-200 bg-gray-100 text-gray-900'
+                                : 'border border-gray-200 bg-white text-gray-900'
                           }`}
                         >
-                          <div className="mb-1 text-sm font-medium">
+                          <div className="mb-1 text-xs font-medium">
                             {message.sender}
                             {message.isFromSlack && (
                               <span className="ml-1 rounded bg-green-200 px-1 text-xs text-green-800">
                                 Slack
-                                {message.channelName && ` (${message.channelName})`}
                               </span>
                             )}
-                            <span className="ml-2 text-xs opacity-75">
+                            <span className="ml-1 text-xs opacity-75">
                               {formatDistanceToNow(new Date(message.timestamp), {
                                 addSuffix: true,
                               })}
                             </span>
                           </div>
-                          <p className="break-words whitespace-pre-wrap">{message.text}</p>
+                          <p className="text-xs break-words whitespace-pre-wrap">{message.text}</p>
                         </div>
                       </div>
                     );
@@ -1033,15 +1020,16 @@ export default function Home() {
                 <div ref={messagesEndRef} />
               </div>
 
-              <form onSubmit={handleSendMessage} className="border-t p-4">
-                <div className="flex space-x-4">
+              {/* Input Section */}
+              <form onSubmit={handleSendMessage} className="rounded-b-lg border-t bg-white p-3">
+                <div className="flex space-x-2">
                   <input
                     ref={messageInputRef}
                     type="text"
                     value={newMessage}
                     onChange={handleInputChange}
                     placeholder="Type your message..."
-                    className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    className="flex-1 rounded-full border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
                     disabled={isLoading}
                     //disabled={isLoading || !isConnected}
                   />
@@ -1049,14 +1037,14 @@ export default function Home() {
                     type="submit"
                     disabled={isLoading || !newMessage.trim()}
                     //disabled={isLoading || !newMessage.trim() || !isConnected}
-                    className="inline-flex items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors duration-200 hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex items-center justify-center rounded-full bg-blue-600 p-2 text-white shadow-sm transition-colors duration-200 hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                     title="Send message"
                   >
-                    <Send className="h-5 w-5" />
+                    <Send className="h-4 w-4" />
                   </button>
                 </div>
                 {slackTypingUsers.length > 0 && (
-                  <div className="mt-1 ml-2 text-xs text-green-600">
+                  <div className="mt-2 text-xs text-green-600">
                     <span className="inline-block">
                       <span className="typing-dot">•</span>
                       <span className="typing-dot">•</span>
@@ -1064,8 +1052,8 @@ export default function Home() {
                     </span>
                     <span className="ml-1">
                       {slackTypingUsers.length === 1
-                        ? `${slackTypingUsers[0].name} is typing in Slack...`
-                        : `${slackTypingUsers.length} people are typing in Slack...`}
+                        ? `${slackTypingUsers[0].name} is typing...`
+                        : `${slackTypingUsers.length} people are typing...`}
                     </span>
                   </div>
                 )}
