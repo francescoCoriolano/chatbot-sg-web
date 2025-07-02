@@ -60,9 +60,13 @@ export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   // Add state for logout confirmation dialog
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState<boolean>(false);
+  // Add state for chat window visibility
+  const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
 
   // Reference to track if component is mounted
   const mounted = useRef(true);
+  // Reference for chat window to detect outside clicks
+  const chatWindowRef = useRef<HTMLDivElement>(null);
 
   // Add a state to track the fallback mode
   const [usingFallbackMode, setUsingFallbackMode] = useState(false);
@@ -821,6 +825,40 @@ export default function Home() {
     }
   }, [isSettingUsername]);
 
+  // Handle clicking outside chat window to close it
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (chatWindowRef.current && !chatWindowRef.current.contains(event.target as Node)) {
+        setIsChatOpen(false);
+      }
+    };
+
+    if (isChatOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isChatOpen]);
+
+  // Toggle chat window
+  const toggleChat = () => {
+    setIsChatOpen(!isChatOpen);
+
+    // Focus message input when opening chat (if not setting username)
+    if (!isChatOpen && !isSettingUsername) {
+      setTimeout(() => {
+        messageInputRef.current?.focus();
+      }, 100);
+    }
+  };
+
+  // Close chat window
+  const closeChat = () => {
+    setIsChatOpen(false);
+  };
+
   return (
     <div className="flex min-h-screen flex-col bg-gray-100">
       <div className="bg-white shadow">
@@ -901,165 +939,186 @@ export default function Home() {
       </div>
 
       {/* Chatbot Window - Fixed position bottom right */}
-      <div className="fixed right-4 bottom-4 z-40">
-        <div className="flex h-96 w-80 flex-col rounded-lg border border-gray-200 bg-white shadow-2xl">
-          {isSettingUsername ? (
-            <div className="flex h-full items-center justify-center p-6">
-              <div className="w-full text-center">
-                <MessageSquare className="mx-auto mb-3 h-8 w-8 text-blue-600" />
-                <h2 className="mb-2 text-lg font-bold text-gray-900">Welcome to Chat</h2>
-                <p className="mb-4 text-sm text-gray-600">Enter your username to start</p>
+      {isChatOpen && (
+        <div className="fixed right-4 bottom-20 z-40" ref={chatWindowRef}>
+          <div className="flex h-96 w-80 flex-col rounded-lg border border-gray-200 bg-white shadow-2xl">
+            {isSettingUsername ? (
+              <div className="flex h-full items-center justify-center p-6">
+                <div className="w-full text-center">
+                  <MessageSquare className="mx-auto mb-3 h-8 w-8 text-blue-600" />
+                  <h2 className="mb-2 text-lg font-bold text-gray-900">Welcome to Chat</h2>
+                  <p className="mb-4 text-sm text-gray-600">Enter your username to start</p>
 
-                <form onSubmit={handleSetUsername} className="space-y-3">
-                  <div>
-                    <input
-                      type="text"
-                      id="username"
-                      value={username}
-                      onChange={e => setUsername(e.target.value)}
-                      className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                      placeholder="Enter your username"
-                      autoFocus
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={!username.trim()}
-                    className="flex w-full items-center justify-center rounded-lg border border-transparent bg-blue-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <MessageSquare className="mr-2 h-4 w-4" />
-                    Start Chatting
-                  </button>
-                </form>
-              </div>
-            </div>
-          ) : (
-            <>
-              {/* Chat Header */}
-              <div className="rounded-t-lg bg-blue-600 px-4 py-3 text-white">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <MessageSquare className="mr-2 h-5 w-5" />
-                    <span className="text-sm font-medium">Chat</span>
-                  </div>
-                  <div className="flex items-center space-x-2">{renderConnectionStatus()}</div>
+                  <form onSubmit={handleSetUsername} className="space-y-3">
+                    <div>
+                      <input
+                        type="text"
+                        id="username"
+                        value={username}
+                        onChange={e => setUsername(e.target.value)}
+                        className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        placeholder="Enter your username"
+                        autoFocus
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={!username.trim()}
+                      className="flex w-full items-center justify-center rounded-lg border border-transparent bg-blue-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <MessageSquare className="mr-2 h-4 w-4" />
+                      Start Chatting
+                    </button>
+                  </form>
                 </div>
               </div>
-
-              {/* Messages Area */}
-              <div className="flex-1 space-y-2 overflow-y-auto bg-gray-50 p-3">
-                {error && (
-                  <div
-                    className="relative rounded border border-yellow-200 bg-yellow-50 px-2 py-1 text-xs text-yellow-700"
-                    role="alert"
-                  >
-                    <span className="block">{error}</span>
+            ) : (
+              <>
+                {/* Chat Header - Clickable to close */}
+                <div
+                  className="cursor-pointer rounded-t-lg bg-blue-600 px-4 py-3 text-white transition-colors hover:bg-blue-700"
+                  onClick={closeChat}
+                  title="Click to close chat"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <MessageSquare className="mr-2 h-5 w-5" />
+                      <span className="text-sm font-medium">Chat</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      {renderConnectionStatus()}
+                      <span className="text-xs opacity-75">✕</span>
+                    </div>
                   </div>
-                )}
+                </div>
 
-                {successMessage && (
-                  <div className="relative rounded border border-green-200 bg-green-50 px-2 py-1 text-xs text-green-800">
-                    <span className="block">{successMessage}</span>
-                  </div>
-                )}
+                {/* Messages Area */}
+                <div className="flex-1 space-y-2 overflow-y-auto bg-gray-50 p-3">
+                  {error && (
+                    <div
+                      className="relative rounded border border-yellow-200 bg-yellow-50 px-2 py-1 text-xs text-yellow-700"
+                      role="alert"
+                    >
+                      <span className="block">{error}</span>
+                    </div>
+                  )}
 
-                {userChannel && (
-                  <div className="relative rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs text-blue-700">
-                    <span className="block">
-                      Connected to: <strong>{userChannelName || userChannel}</strong>
-                    </span>
-                  </div>
-                )}
+                  {successMessage && (
+                    <div className="relative rounded border border-green-200 bg-green-50 px-2 py-1 text-xs text-green-800">
+                      <span className="block">{successMessage}</span>
+                    </div>
+                  )}
 
-                {messages.length === 0 ? (
-                  <div className="flex h-full items-center justify-center">
-                    <p className="text-center text-xs text-gray-500">
-                      No messages yet. Start chatting!
-                    </p>
-                  </div>
-                ) : (
-                  messages.map(message => {
-                    // Debug log for message rendering
-                    console.log(
-                      `Rendering message - id: ${message.id}, from: ${message.sender}, isFromSlack: ${message.isFromSlack}`,
-                    );
+                  {userChannel && (
+                    <div className="relative rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs text-blue-700">
+                      <span className="block">
+                        Connected to: <strong>{userChannelName || userChannel}</strong>
+                      </span>
+                    </div>
+                  )}
 
-                    return (
-                      <div
-                        key={message.id}
-                        className={`flex ${message.sender === username ? 'justify-end' : 'justify-start'}`}
-                      >
+                  {messages.length === 0 ? (
+                    <div className="flex h-full items-center justify-center">
+                      <p className="text-center text-xs text-gray-500">
+                        No messages yet. Start chatting!
+                      </p>
+                    </div>
+                  ) : (
+                    messages.map(message => {
+                      // Debug log for message rendering
+                      console.log(
+                        `Rendering message - id: ${message.id}, from: ${message.sender}, isFromSlack: ${message.isFromSlack}`,
+                      );
+
+                      return (
                         <div
-                          className={`message-bubble max-w-xs rounded-lg px-3 py-2 text-xs shadow-sm ${
-                            message.sender === username
-                              ? 'bg-blue-600 text-white'
-                              : message.isFromSlack
-                                ? 'border border-green-200 bg-green-100 text-gray-900'
-                                : 'border border-gray-200 bg-white text-gray-900'
-                          }`}
+                          key={message.id}
+                          className={`flex ${message.sender === username ? 'justify-end' : 'justify-start'}`}
                         >
-                          <div className="mb-1 text-xs font-medium">
-                            {message.sender}
-                            {message.isFromSlack && (
-                              <span className="ml-1 rounded bg-green-200 px-1 text-xs text-green-800">
-                                Slack
+                          <div
+                            className={`message-bubble max-w-xs rounded-lg px-3 py-2 text-xs shadow-sm ${
+                              message.sender === username
+                                ? 'bg-blue-600 text-white'
+                                : message.isFromSlack
+                                  ? 'border border-green-200 bg-green-100 text-gray-900'
+                                  : 'border border-gray-200 bg-white text-gray-900'
+                            }`}
+                          >
+                            <div className="mb-1 text-xs font-medium">
+                              {message.sender}
+                              {message.isFromSlack && (
+                                <span className="ml-1 rounded bg-green-200 px-1 text-xs text-green-800">
+                                  Slack
+                                </span>
+                              )}
+                              <span className="ml-1 text-xs opacity-75">
+                                {formatDistanceToNow(new Date(message.timestamp), {
+                                  addSuffix: true,
+                                })}
                               </span>
-                            )}
-                            <span className="ml-1 text-xs opacity-75">
-                              {formatDistanceToNow(new Date(message.timestamp), {
-                                addSuffix: true,
-                              })}
-                            </span>
+                            </div>
+                            <p className="text-xs break-words whitespace-pre-wrap">
+                              {message.text}
+                            </p>
                           </div>
-                          <p className="text-xs break-words whitespace-pre-wrap">{message.text}</p>
                         </div>
-                      </div>
-                    );
-                  })
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-
-              {/* Input Section */}
-              <form onSubmit={handleSendMessage} className="rounded-b-lg border-t bg-white p-3">
-                <div className="flex space-x-2">
-                  <input
-                    ref={messageInputRef}
-                    type="text"
-                    value={newMessage}
-                    onChange={handleInputChange}
-                    placeholder="Type your message..."
-                    className="flex-1 rounded-full border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-                    disabled={isLoading}
-                    //disabled={isLoading || !isConnected}
-                  />
-                  <button
-                    type="submit"
-                    disabled={isLoading || !newMessage.trim()}
-                    //disabled={isLoading || !newMessage.trim() || !isConnected}
-                    className="inline-flex items-center justify-center rounded-full bg-blue-600 p-2 text-white shadow-sm transition-colors duration-200 hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-                    title="Send message"
-                  >
-                    <Send className="h-4 w-4" />
-                  </button>
+                      );
+                    })
+                  )}
+                  <div ref={messagesEndRef} />
                 </div>
-                {slackTypingUsers.length > 0 && (
-                  <div className="mt-2 text-xs text-green-600">
-                    <span className="inline-block">
-                      <span className="typing-dot">•</span>
-                      <span className="typing-dot">•</span>
-                      <span className="typing-dot">•</span>
-                    </span>
-                    <span className="ml-1">
-                      {slackTypingUsers.length === 1
-                        ? `${slackTypingUsers[0].name} is typing...`
-                        : `${slackTypingUsers.length} people are typing...`}
-                    </span>
+
+                {/* Input Section */}
+                <form onSubmit={handleSendMessage} className="rounded-b-lg border-t bg-white p-3">
+                  <div className="flex space-x-2">
+                    <input
+                      ref={messageInputRef}
+                      type="text"
+                      value={newMessage}
+                      onChange={handleInputChange}
+                      placeholder="Type your message..."
+                      className="flex-1 rounded-full border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                      disabled={isLoading}
+                      //disabled={isLoading || !isConnected}
+                    />
+                    <button
+                      type="submit"
+                      disabled={isLoading || !newMessage.trim()}
+                      //disabled={isLoading || !newMessage.trim() || !isConnected}
+                      className="inline-flex items-center justify-center rounded-full bg-blue-600 p-2 text-white shadow-sm transition-colors duration-200 hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                      title="Send message"
+                    >
+                      <Send className="h-4 w-4" />
+                    </button>
                   </div>
-                )}
-              </form>
-            </>
-          )}
+                  {slackTypingUsers.length > 0 && (
+                    <div className="mt-2 text-xs text-green-600">
+                      <span className="inline-block">
+                        <span className="typing-dot">•</span>
+                        <span className="typing-dot">•</span>
+                        <span className="typing-dot">•</span>
+                      </span>
+                      <span className="ml-1">
+                        {slackTypingUsers.length === 1
+                          ? `${slackTypingUsers[0].name} is typing...`
+                          : `${slackTypingUsers.length} people are typing...`}
+                      </span>
+                    </div>
+                  )}
+                </form>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Chat Trigger Bar - Fixed at bottom of screen */}
+      <div className="fixed right-0 bottom-0 left-0 z-30">
+        <div
+          className="flex h-8 cursor-pointer items-center justify-center bg-blue-600 text-white transition-colors hover:bg-blue-700"
+          onClick={toggleChat}
+        >
+          <span className="text-xs font-medium">Can I help you?</span>
         </div>
       </div>
 
