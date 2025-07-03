@@ -41,6 +41,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [localModeOnly, setLocalModeOnly] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageInputRef = useRef<HTMLInputElement>(null);
   const [slackTypingUsers, setSlackTypingUsers] = useState<TypingUser[]>([]);
   const socketRef = useRef<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -59,9 +60,16 @@ export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   // Add state for logout confirmation dialog
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState<boolean>(false);
+  // Add state for chat window visibility
+  const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
+
+  // Add state for selected question
+  const [selectedQuestion, setSelectedQuestion] = useState<string | null>(null);
 
   // Reference to track if component is mounted
   const mounted = useRef(true);
+  // Reference for chat window to detect outside clicks
+  const chatWindowRef = useRef<HTMLDivElement>(null);
 
   // Add a state to track the fallback mode
   const [usingFallbackMode, setUsingFallbackMode] = useState(false);
@@ -220,21 +228,49 @@ export default function Home() {
 
     // Handle Slack messages
     const onSlackMessage = (message: Message) => {
+      console.log('🎯 SLACK MESSAGE RECEIVED:', {
+        messageId: message.id,
+        sender: message.sender,
+        text: message.text,
+        channelId: message.channelId,
+        targetUser: message.targetUser,
+        currentUser: username,
+        currentUserChannel: userChannel,
+      });
+
       // Only skip if we're confident it's our message (has our clientMessageId or slackTs)
       const isCertainlyOurMessage =
         (message.sender === username && message.id && sentMessageIds.has(message.id)) ||
         (message.id && slackTimestamps.has(message.id));
 
-      if (isCertainlyOurMessage) return;
+      if (isCertainlyOurMessage) {
+        console.log('🎯 SKIPPING - This is certainly our own message');
+        return;
+      }
 
-      // Check if this message is relevant to this user - must be in their channel or directly for them
+      // Make message filtering more permissive for Slack messages
       const isRelevantMessage =
         message.sender === username ||
         (userChannel && message.channelId === userChannel) ||
-        message.targetUser === username;
+        message.targetUser === username ||
+        // Also accept messages from channels that contain chat-app-[username]
+        (message.channelId && message.channelId.includes(`chat-app-${username}`)) ||
+        // Accept all Slack messages when no channel is set (during initial setup)
+        (!userChannel && message.isFromSlack);
+
+      console.log('🎯 RELEVANCE CHECK:', {
+        isRelevantMessage,
+        reasons: {
+          senderMatch: message.sender === username,
+          channelMatch: userChannel && message.channelId === userChannel,
+          targetUserMatch: message.targetUser === username,
+          channelNameMatch: message.channelId && message.channelId.includes(`chat-app-${username}`),
+          noChannelSetAndFromSlack: !userChannel && message.isFromSlack,
+        },
+      });
 
       if (!isRelevantMessage) {
-        console.log(`Skipping message not relevant to user ${username}:`, message.id);
+        console.log(`🎯 SKIPPING - Message not relevant to user ${username}:`, message.id);
         return;
       }
 
@@ -244,8 +280,12 @@ export default function Home() {
         isFromSlack: true,
       };
 
+      console.log('🎯 ADDING SLACK MESSAGE TO STATE:', slackMessage);
+
       // Add the Slack message to our state
       setMessages(prevMessages => {
+        console.log('🎯 CURRENT MESSAGES COUNT:', prevMessages.length);
+
         // Check if we already have this message (prevent duplicates)
         const isDuplicate = prevMessages.some(
           msg =>
@@ -257,7 +297,10 @@ export default function Home() {
               ) < 5000),
         );
 
-        if (isDuplicate) return prevMessages;
+        if (isDuplicate) {
+          console.log('🎯 SKIPPING - Message already exists (duplicate)');
+          return prevMessages;
+        }
 
         // If the message was very recent, show typing indicator
         const messageTime = new Date(slackMessage.timestamp).getTime();
@@ -287,9 +330,12 @@ export default function Home() {
 
         // Add new message and sort
         const newMessages = [...prevMessages, slackMessage];
-        return newMessages.sort(
+        const sortedMessages = newMessages.sort(
           (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
         );
+
+        console.log('🎯 NEW MESSAGES COUNT AFTER ADD:', sortedMessages.length);
+        return sortedMessages;
       });
     };
 
@@ -643,15 +689,135 @@ export default function Home() {
 
   const handleSetUsername = (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('📝 === HANDLE SET USERNAME CALLED ===');
+    console.log('📝 Username entered:', username.trim());
+    console.log('📝 Current selectedQuestion:', selectedQuestion);
+    console.log('📝 Current messages length:', messages.length);
+
     if (username.trim()) {
       // Set flag that we're setting username
       setIsSettingUsername(false);
+      console.log('📝 Set isSettingUsername to false');
 
       // Clear any old messages
       localStorage.setItem('chat-messages', '[]');
-      setMessages([]);
+      console.log('📝 Cleared localStorage messages');
 
-      console.log('Username set, messages cleared for fresh start');
+      console.log('📝 Username set, messages cleared for fresh start');
+
+      // If there's a selected question, send it immediately to create channel
+      if (selectedQuestion) {
+        console.log('🚀 PROCESSING SELECTED QUESTION:', selectedQuestion);
+        console.log('🚀 Username:', username);
+        console.log('🚀 Current messages length:', messages.length);
+
+        const messageId = Date.now().toString();
+        const localMessage: Message = {
+          id: messageId,
+          text: selectedQuestion,
+          sender: username,
+          timestamp: new Date().toISOString(),
+          isFromSlack: false,
+        };
+
+        console.log('🚀 Created local message object:', localMessage);
+
+        // Add to sent messages tracking
+        sentMessageIds.add(messageId);
+        console.log('🚀 Added to sentMessageIds:', messageId);
+
+        // Clear input field and add message to local state immediately for better UX
+        setMessages([localMessage]);
+        console.log('🚀 Added selected question to local messages');
+
+        console.log('🚀 Sending selected question to create channel:', selectedQuestion);
+
+        // Send the message using the same flow as regular messages
+        const sendSelectedQuestion = async () => {
+          console.log('🚀 Starting sendSelectedQuestion function...');
+          setIsLoading(true);
+          setError(null);
+
+          try {
+            // Try to send via socket first if we're in socket mode (same as regular messages)
+            const socketSent = sendMessageViaSocket(localMessage);
+
+            if (socketSent) {
+              console.log('🚀 ✅ Selected question sent via socket');
+              // Fetch channel after sending message
+              setTimeout(fetchUserChannel, 2000);
+              setIsLoading(false);
+              setSelectedQuestion(null);
+              return;
+            }
+
+            // Fallback to API call if socket is not available or failed
+            console.log('🚀 Falling back to API call for selected question');
+
+            const response = await fetch('/api/slack-chat', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                message: selectedQuestion,
+                sender: username,
+                userId: 'user_' + messageId,
+                clientMessageId: messageId,
+              }),
+            });
+
+            const data = await response.json();
+            console.log('🚀 API response data:', data);
+
+            // If message was sent to Slack, track the timestamp
+            if (data.slackStatus?.success && data.slackStatus.slackTs) {
+              slackTimestamps.add(data.slackStatus.slackTs);
+              console.log('🚀 Added slack timestamp:', data.slackStatus.slackTs);
+            }
+
+            // Check for local-only mode
+            if (data.localOnly) {
+              setLocalModeOnly(true);
+              setError(
+                "Messages are only saved locally. The bot doesn't have permission to send to Slack.",
+              );
+            }
+
+            if (!response.ok) {
+              throw new Error('Failed to send selected question to Slack');
+            }
+
+            console.log('🚀 ✅ Selected question sent successfully via API');
+
+            // Fetch channel after sending message
+            setTimeout(fetchUserChannel, 2000);
+          } catch (error) {
+            console.error('🚀 ❌ Error sending selected question:', error);
+            setError('Failed to send question to Slack, but your message is saved locally');
+          } finally {
+            if (mounted.current) {
+              setIsLoading(false);
+            }
+            // Clear the selected question AFTER sending
+            console.log('🚀 Clearing selectedQuestion...');
+            setSelectedQuestion(null);
+          }
+        };
+
+        // Send immediately
+        console.log('🚀 Calling sendSelectedQuestion immediately...');
+        sendSelectedQuestion();
+      } else {
+        console.log('🚀 No selected question, starting with empty messages');
+        // No selected question, start with empty messages
+        setMessages([]);
+      }
+
+      // Focus the message input after a short delay to ensure DOM is updated
+      setTimeout(() => {
+        messageInputRef.current?.focus();
+      }, 200);
     }
   };
 
@@ -666,23 +832,23 @@ export default function Home() {
 
     if (socketConnected) {
       return (
-        <div className="flex items-center text-xs text-green-600">
-          <div className="mr-1 h-2 w-2 rounded-full bg-green-600"></div>
-          Live mode
+        <div className="flex items-center text-xs text-white">
+          <div className="mr-1 h-1.5 w-1.5 rounded-full bg-green-400"></div>
+          Live
         </div>
       );
     } else if (usingFallbackMode) {
       return (
-        <div className="flex items-center text-xs text-amber-600">
-          <div className="mr-1 h-2 w-2 rounded-full bg-amber-600"></div>
-          Polling mode
+        <div className="flex items-center text-xs text-white">
+          <div className="mr-1 h-1.5 w-1.5 rounded-full bg-amber-400"></div>
+          Polling
         </div>
       );
     } else {
       return (
-        <div className="flex items-center text-xs text-red-600">
-          <div className="mr-1 h-2 w-2 rounded-full bg-red-600"></div>
-          Disconnected
+        <div className="flex items-center text-xs text-white">
+          <div className="mr-1 h-1.5 w-1.5 rounded-full bg-red-400"></div>
+          Offline
         </div>
       );
     }
@@ -746,6 +912,7 @@ export default function Home() {
           setSuccessMessage('');
           setError(null);
           setIsConnected(false);
+          setSelectedQuestion(null);
 
           console.log(
             'User logged out after channel deletion, cleared session data and disconnected socket',
@@ -791,6 +958,7 @@ export default function Home() {
     setSuccessMessage('');
     setError(null);
     setIsConnected(false);
+    // selectedQuestion will be reset on page reload
 
     console.log('User logged out, cleared session data and disconnected socket');
     setIsLogoutModalOpen(false);
@@ -804,7 +972,86 @@ export default function Home() {
     // Reset channel info when username changes
     setUserChannel(null);
     setUserChannelName(null);
+    // DON'T reset selectedQuestion here - let it persist until message is sent
   }, [username]);
+
+  // Focus message input when chat becomes available
+  useEffect(() => {
+    if (!isSettingUsername && messageInputRef.current) {
+      setTimeout(() => {
+        messageInputRef.current?.focus();
+      }, 100);
+    }
+  }, [isSettingUsername]);
+
+  // Debug message state changes
+  useEffect(() => {
+    console.log(
+      '🎯 DEBUG - Messages state changed:',
+      messages.length,
+      'messages, selectedQuestion:',
+      selectedQuestion,
+    );
+    console.log('🎯 DEBUG - Messages array:', messages);
+    if (messages.length > 0) {
+      console.log('🎯 DEBUG - First message:', messages[0]);
+    }
+  }, [messages, selectedQuestion]);
+
+  // Handle clicking outside chat window to close it
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (chatWindowRef.current && !chatWindowRef.current.contains(event.target as Node)) {
+        setIsChatOpen(false);
+      }
+    };
+
+    if (isChatOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isChatOpen]);
+
+  // Toggle chat window
+  const toggleChat = () => {
+    setIsChatOpen(!isChatOpen);
+
+    // Focus message input when opening chat (if not setting username)
+    if (!isChatOpen && !isSettingUsername) {
+      setTimeout(() => {
+        messageInputRef.current?.focus();
+      }, 100);
+    }
+  };
+
+  // Close chat window
+  const closeChat = () => {
+    setIsChatOpen(false);
+  };
+
+  const handleQuestionClick = (question: string) => {
+    console.log('🔥 === Question clicked ===');
+    console.log('🔥 Question:', question);
+    console.log('🔥 Current selectedQuestion before:', selectedQuestion);
+    console.log('🔥 Current messages length before:', messages.length);
+    console.log('🔥 Current isSettingUsername:', isSettingUsername);
+
+    setSelectedQuestion(question);
+    setIsChatOpen(true);
+
+    console.log('🔥 Set selectedQuestion to:', question);
+    console.log('🔥 Opened chat window');
+
+    // Focus message input when opening chat (if not setting username)
+    if (!isSettingUsername) {
+      setTimeout(() => {
+        messageInputRef.current?.focus();
+      }, 100);
+    }
+  };
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-100">
@@ -885,100 +1132,81 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="mx-auto w-full max-w-7xl flex-1 px-4 py-6">
-        <div className="flex h-[calc(100vh-200px)] flex-col rounded-lg bg-white shadow-xl">
-          {isSettingUsername ? (
-            <div className="flex h-full items-center justify-center">
-              <div className="w-full max-w-md rounded-lg bg-white p-8 shadow-xl">
-                <div className="text-center">
-                  <MessageSquare className="mx-auto mb-4 h-12 w-12 text-blue-600" />
-                  <h2 className="mb-2 text-3xl font-bold text-gray-900">Welcome to Chat</h2>
-                  <p className="mb-6 text-gray-600">Enter your username to start chatting</p>
-                </div>
+      {/* Chatbot Window - Fixed position bottom right */}
+      {isChatOpen && (
+        <div className="fixed right-4 bottom-[36px] z-40" ref={chatWindowRef}>
+          <div className="flex h-[485px] w-[405px] flex-col border border-gray-200 bg-white shadow-2xl">
+            {isSettingUsername ? (
+              <div className="flex h-full items-center justify-center p-6">
+                <div className="w-full text-center">
+                  <MessageSquare className="mx-auto mb-3 h-8 w-8 text-blue-600" />
+                  <h2 className="mb-2 text-lg font-bold text-gray-900">Welcome to Chat</h2>
+                  <p className="mb-4 text-sm text-gray-600">Enter your username to start</p>
 
-                <form onSubmit={handleSetUsername} className="space-y-4">
-                  <div>
-                    <label
-                      htmlFor="username"
-                      className="mb-2 block text-sm font-medium text-gray-700"
+                  <form onSubmit={handleSetUsername} className="space-y-3">
+                    <div>
+                      <input
+                        type="text"
+                        id="username"
+                        value={username}
+                        onChange={e => setUsername(e.target.value)}
+                        className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        placeholder="Enter your username"
+                        autoFocus
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={!username.trim()}
+                      className="flex w-full cursor-pointer items-center justify-center rounded-lg border border-transparent bg-[#262525] px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Choose your username
-                    </label>
-                    <input
-                      type="text"
-                      id="username"
-                      value={username}
-                      onChange={e => setUsername(e.target.value)}
-                      className="block w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-900 shadow-sm transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                      placeholder="Enter your username"
-                      autoFocus
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={!username.trim()}
-                    className="flex w-full items-center justify-center rounded-lg border border-transparent bg-blue-600 px-4 py-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <MessageSquare className="mr-2 h-4 w-4" />
-                    Start Chatting
-                  </button>
-                </form>
+                      <MessageSquare className="mr-2 h-4 w-4" />
+                      Start Chatting
+                    </button>
+                  </form>
+                </div>
               </div>
-            </div>
-          ) : (
-            <>
-              <div className="flex-1 space-y-4 overflow-y-auto p-4">
-                {error && (
-                  <div
-                    className="relative rounded border border-yellow-200 bg-yellow-50 px-4 py-3 text-yellow-700"
-                    role="alert"
-                  >
-                    <span className="block sm:inline">{error}</span>
-                  </div>
-                )}
-
-                {successMessage && (
-                  <div className="relative mb-6 rounded-lg border-2 border-green-300 bg-green-50 px-4 py-4 text-green-800 shadow-md">
+            ) : (
+              <>
+                {/* Chat Header - Clickable to close */}
+                <div
+                  className="cursor-pointer bg-[#262525] px-4 py-3 text-white transition-colors"
+                  onClick={closeChat}
+                  title="Click to close chat"
+                >
+                  <div className="flex items-center justify-between">
                     <div className="flex items-center">
-                      <svg
-                        className="mr-2 h-5 w-5 text-green-600"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                        xmlns="http://www.w3.org/2000/svg"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M5 13l4 4L19 7"
-                        ></path>
-                      </svg>
-                      <span className="font-medium">{successMessage}</span>
+                      <MessageSquare className="mr-2 h-5 w-5" />
+                      <span className="text-sm font-medium">Chat</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      {renderConnectionStatus()}
+                      <span className="text-xs font-bold opacity-75">___</span>
                     </div>
                   </div>
-                )}
+                </div>
 
-                {userChannel && (
-                  <div className="relative mb-4 rounded border border-blue-200 bg-blue-50 px-4 py-3 text-blue-700">
-                    <span className="block sm:inline">
-                      Your messages are sent to the Slack channel:{' '}
-                      <strong>{userChannelName || userChannel}</strong>
-                    </span>
-                  </div>
-                )}
+                {/* Messages Area */}
+                <div className="flex-1 space-y-2 overflow-y-auto bg-gray-50 p-3">
+                  {error && (
+                    <div
+                      className="relative rounded border border-yellow-200 bg-yellow-50 px-2 py-1 text-xs text-yellow-700"
+                      role="alert"
+                    >
+                      <span className="block">{error}</span>
+                    </div>
+                  )}
 
-                {messages.length === 0 ? (
-                  <div className="flex h-full items-center justify-center">
-                    <p className="text-center text-gray-500">
-                      No messages yet. Be the first to send a message!
-                    </p>
-                  </div>
-                ) : (
-                  messages.map(message => {
+                  {successMessage && (
+                    <div className="relative rounded border border-green-200 bg-green-50 px-2 py-1 text-xs text-green-800">
+                      <span className="block">{successMessage}</span>
+                    </div>
+                  )}
+
+                  {messages.map(message => {
                     // Debug log for message rendering
                     console.log(
-                      `Rendering message - id: ${message.id}, from: ${message.sender}, isFromSlack: ${message.isFromSlack}`,
+                      `🎨 RENDERING message - id: ${message.id}, from: ${message.sender}, text: "${message.text}", isFromSlack: ${message.isFromSlack}`,
                     );
 
                     return (
@@ -987,73 +1215,183 @@ export default function Home() {
                         className={`flex ${message.sender === username ? 'justify-end' : 'justify-start'}`}
                       >
                         <div
-                          className={`message-bubble max-w-sm rounded-lg px-4 py-2 shadow ${
+                          className={`message-bubble max-w-xs rounded-lg px-3 py-2 text-xs shadow-sm ${
                             message.sender === username
                               ? 'bg-blue-600 text-white'
                               : message.isFromSlack
                                 ? 'border border-green-200 bg-green-100 text-gray-900'
-                                : 'border border-gray-200 bg-gray-100 text-gray-900'
+                                : 'border border-gray-200 bg-white text-gray-900'
                           }`}
                         >
-                          <div className="mb-1 text-sm font-medium">
+                          <div className="mb-1 text-xs font-medium">
                             {message.sender}
                             {message.isFromSlack && (
                               <span className="ml-1 rounded bg-green-200 px-1 text-xs text-green-800">
                                 Slack
-                                {message.channelName && ` (${message.channelName})`}
                               </span>
                             )}
-                            <span className="ml-2 text-xs opacity-75">
+                            <span className="ml-1 text-xs opacity-75">
                               {formatDistanceToNow(new Date(message.timestamp), {
                                 addSuffix: true,
                               })}
                             </span>
                           </div>
-                          <p className="break-words whitespace-pre-wrap">{message.text}</p>
+                          <p className="text-xs break-words whitespace-pre-wrap">{message.text}</p>
                         </div>
                       </div>
                     );
-                  })
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-
-              <form onSubmit={handleSendMessage} className="border-t p-4">
-                <div className="flex space-x-4">
-                  <input
-                    type="text"
-                    value={newMessage}
-                    onChange={handleInputChange}
-                    placeholder="Type your message..."
-                    className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                    disabled={isLoading || !isConnected}
-                  />
-                  <button
-                    type="submit"
-                    disabled={isLoading || !newMessage.trim() || !isConnected}
-                    className="inline-flex items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors duration-200 hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-                    title="Send message"
-                  >
-                    <Send className="h-5 w-5" />
-                  </button>
+                  })}
+                  <div ref={messagesEndRef} />
                 </div>
-                {slackTypingUsers.length > 0 && (
-                  <div className="mt-1 ml-2 text-xs text-green-600">
-                    <span className="inline-block">
-                      <span className="typing-dot">•</span>
-                      <span className="typing-dot">•</span>
-                      <span className="typing-dot">•</span>
-                    </span>
-                    <span className="ml-1">
-                      {slackTypingUsers.length === 1
-                        ? `${slackTypingUsers[0].name} is typing in Slack...`
-                        : `${slackTypingUsers.length} people are typing in Slack...`}
-                    </span>
+
+                {/* Input Section */}
+                <form onSubmit={handleSendMessage} className="rounded-b-lg border-t bg-white p-3">
+                  <div className="flex space-x-2">
+                    <input
+                      ref={messageInputRef}
+                      type="text"
+                      value={newMessage}
+                      onChange={handleInputChange}
+                      placeholder="Ask anything here"
+                      className="flex-1 rounded-full border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:ring-1 focus:outline-none"
+                      disabled={isLoading}
+                      //disabled={isLoading || !isConnected}
+                    />
+                    <button
+                      type="submit"
+                      disabled={isLoading || !newMessage.trim()}
+                      //disabled={isLoading || !newMessage.trim() || !isConnected}
+                      className="inline-flex cursor-pointer items-center justify-center text-white transition-colors duration-200 focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                      title="Send message"
+                    >
+                      <img src="/images/icons/arrowUp.svg" alt="Send" className="h-10 w-10" />
+                    </button>
                   </div>
-                )}
-              </form>
-            </>
-          )}
+                  {slackTypingUsers.length > 0 && (
+                    <div className="mt-2 text-xs text-green-600">
+                      <span className="inline-block">
+                        <span className="typing-dot-chat">•</span>
+                        <span className="typing-dot-chat">•</span>
+                        <span className="typing-dot-chat">•</span>
+                      </span>
+                      <span className="ml-1">
+                        {slackTypingUsers.length === 1
+                          ? `${slackTypingUsers[0].name} is typing...`
+                          : `${slackTypingUsers.length} people are typing...`}
+                      </span>
+                    </div>
+                  )}
+                </form>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Chat Trigger Bar - Fixed at bottom of screen with sliding animation */}
+      <div className="fixed right-0 bottom-0 left-0 z-30">
+        <div className="font-founders h-[36px] overflow-hidden bg-[#262525]">
+          <div className="sliding-questions flex h-full items-center text-[22px] font-light whitespace-nowrap">
+            {/* First set of questions */}
+            <div
+              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
+              onClick={() => handleQuestionClick('Can you tell me more about Studio Graphene?')}
+            >
+              <span className="text-[22px]">Can you tell me more about Studio Graphene?</span>
+            </div>
+            <div className="mx-4 flex items-center">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full">
+                <img src="/images/icons/blue.svg" alt="separator" className="h-4 w-4" />
+              </div>
+            </div>
+            <div
+              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
+              onClick={() => handleQuestionClick('What AI services do you currently offer?')}
+            >
+              <span className="text-[22px]">What AI services do you currently offer?</span>
+            </div>
+            <div className="mx-4 flex items-center">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full">
+                <img src="/images/icons/green.svg" alt="separator" className="h-4 w-4" />
+              </div>
+            </div>
+            <div
+              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
+              onClick={() => handleQuestionClick('What technologies do you use?')}
+            >
+              <span className="text-[22px]">What technologies do you use?</span>
+            </div>
+            <div className="mx-4 flex items-center">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full">
+                <img src="/images/icons/yellow.svg" alt="separator" className="h-4 w-4" />
+              </div>
+            </div>
+
+            {/* Duplicate set for seamless looping */}
+            <div
+              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
+              onClick={() => handleQuestionClick('Can you tell me more about Studio Graphene?')}
+            >
+              <span className="text-[22px]">Can you tell me more about Studio Graphene?</span>
+            </div>
+            <div className="mx-4 flex items-center">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full">
+                <img src="/images/icons/pink.svg" alt="separator" className="h-4 w-4" />
+              </div>
+            </div>
+            <div
+              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
+              onClick={() => handleQuestionClick('What AI services do you currently offer?')}
+            >
+              <span className="text-[22px]">What AI services do you currently offer?</span>
+            </div>
+            <div className="mx-4 flex items-center">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full">
+                <img src="/images/icons/blue.svg" alt="separator" className="h-4 w-4" />
+              </div>
+            </div>
+            <div
+              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
+              onClick={() => handleQuestionClick('What technologies do you use?')}
+            >
+              <span className="text-[22px]">What technologies do you use?</span>
+            </div>
+            <div className="mx-4 flex items-center">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full">
+                <img src="/images/icons/green.svg" alt="separator" className="h-4 w-4" />
+              </div>
+            </div>
+
+            {/* Third set for extra seamless looping */}
+            <div
+              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
+              onClick={() => handleQuestionClick('Can you tell me more about Studio Graphene?')}
+            >
+              <span className="text-[22px]">Can you tell me more about Studio Graphene?</span>
+            </div>
+            <div className="mx-4 flex items-center">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full">
+                <img src="/images/icons/yellow.svg" alt="separator" className="h-4 w-4" />
+              </div>
+            </div>
+            <div
+              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
+              onClick={() => handleQuestionClick('What AI services do you currently offer?')}
+            >
+              <span className="text-[22px]">What AI services do you currently offer?</span>
+            </div>
+            <div className="mx-4 flex items-center">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full">
+                <img src="/images/icons/pink.svg" alt="separator" className="h-4 w-4" />
+              </div>
+            </div>
+            <div
+              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
+              onClick={() => handleQuestionClick('What technologies do you use?')}
+            >
+              <span className="text-[22px]">What technologies do you use?</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1062,7 +1400,7 @@ export default function Home() {
 
       {/* Delete Channel Modal */}
       {isModalOpen && (
-        <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black">
+        <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-[#262525]">
           <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
             <h3 className="mb-4 text-lg font-bold text-red-600">Delete Channel Confirmation</h3>
             <p className="mb-4">
@@ -1106,7 +1444,7 @@ export default function Home() {
 
       {/* Logout Confirmation Modal */}
       {isLogoutModalOpen && (
-        <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black">
+        <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-[#262525]">
           <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
             <h3 className="mb-4 text-lg font-bold text-gray-700">Confirm Logout</h3>
             <p className="mb-6">
