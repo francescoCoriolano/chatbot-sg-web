@@ -1134,8 +1134,8 @@ export default function Home() {
 
       {/* Chatbot Window - Fixed position bottom right */}
       {isChatOpen && (
-        <div className="fixed right-4 bottom-20 z-40" ref={chatWindowRef}>
-          <div className="flex h-96 w-80 flex-col rounded-lg border border-gray-200 bg-white shadow-2xl">
+        <div className="fixed right-4 bottom-[36px] z-40" ref={chatWindowRef}>
+          <div className="flex h-[485px] w-[405px] flex-col border border-gray-200 bg-white shadow-2xl">
             {isSettingUsername ? (
               <div className="flex h-full items-center justify-center p-6">
                 <div className="w-full text-center">
@@ -1158,7 +1158,7 @@ export default function Home() {
                     <button
                       type="submit"
                       disabled={!username.trim()}
-                      className="flex w-full items-center justify-center rounded-lg border border-transparent bg-blue-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                      className="flex w-full cursor-pointer items-center justify-center rounded-lg border border-transparent bg-[#262525] px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <MessageSquare className="mr-2 h-4 w-4" />
                       Start Chatting
@@ -1170,7 +1170,7 @@ export default function Home() {
               <>
                 {/* Chat Header - Clickable to close */}
                 <div
-                  className="cursor-pointer rounded-t-lg bg-blue-600 px-4 py-3 text-white transition-colors hover:bg-blue-700"
+                  className="cursor-pointer bg-[#262525] px-4 py-3 text-white transition-colors"
                   onClick={closeChat}
                   title="Click to close chat"
                 >
@@ -1181,7 +1181,7 @@ export default function Home() {
                     </div>
                     <div className="flex items-center space-x-2">
                       {renderConnectionStatus()}
-                      <span className="text-xs opacity-75">✕</span>
+                      <span className="text-xs font-bold opacity-75">___</span>
                     </div>
                   </div>
                 </div>
@@ -1252,8 +1252,8 @@ export default function Home() {
                       type="text"
                       value={newMessage}
                       onChange={handleInputChange}
-                      placeholder="Type your message..."
-                      className="flex-1 rounded-full border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                      placeholder="Ask anything here"
+                      className="flex-1 rounded-full border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:ring-1 focus:outline-none"
                       disabled={isLoading}
                       //disabled={isLoading || !isConnected}
                     />
@@ -1261,18 +1261,18 @@ export default function Home() {
                       type="submit"
                       disabled={isLoading || !newMessage.trim()}
                       //disabled={isLoading || !newMessage.trim() || !isConnected}
-                      className="inline-flex items-center justify-center rounded-full bg-blue-600 p-2 text-white shadow-sm transition-colors duration-200 hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex cursor-pointer items-center justify-center text-white transition-colors duration-200 focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                       title="Send message"
                     >
-                      <Send className="h-4 w-4" />
+                      <img src="/images/icons/arrowUp.svg" alt="Send" className="h-10 w-10" />
                     </button>
                   </div>
                   {slackTypingUsers.length > 0 && (
                     <div className="mt-2 text-xs text-green-600">
                       <span className="inline-block">
-                        <span className="typing-dot">•</span>
-                        <span className="typing-dot">•</span>
-                        <span className="typing-dot">•</span>
+                        <span className="typing-dot-chat">•</span>
+                        <span className="typing-dot-chat">•</span>
+                        <span className="typing-dot-chat">•</span>
                       </span>
                       <span className="ml-1">
                         {slackTypingUsers.length === 1
@@ -1290,74 +1290,106 @@ export default function Home() {
 
       {/* Chat Trigger Bar - Fixed at bottom of screen with sliding animation */}
       <div className="fixed right-0 bottom-0 left-0 z-30">
-        <div className="h-8 overflow-hidden bg-blue-600 text-white">
-          <div className="sliding-questions flex h-full items-center whitespace-nowrap">
+        <div className="font-founders h-[36px] overflow-hidden bg-[#262525]">
+          <div className="sliding-questions flex h-full items-center text-[22px] font-light whitespace-nowrap">
             {/* First set of questions */}
             <div
-              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-blue-700"
+              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
               onClick={() => handleQuestionClick('Can you tell me more about Studio Graphene?')}
             >
-              <span className="text-xs font-bold">Can you tell me more about Studio Graphene?</span>
+              <span className="text-[22px]">Can you tell me more about Studio Graphene?</span>
             </div>
-            <div className="mx-4 h-4 w-px flex-shrink-0 bg-blue-500"></div>
+            <div className="mx-4 flex items-center">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full">
+                <img src="/images/icons/blue.svg" alt="separator" className="h-4 w-4" />
+              </div>
+            </div>
             <div
-              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-blue-700"
+              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
               onClick={() => handleQuestionClick('What AI services do you currently offer?')}
             >
-              <span className="text-xs font-bold">What AI services do you currently offer?</span>
+              <span className="text-[22px]">What AI services do you currently offer?</span>
             </div>
-            <div className="mx-4 h-4 w-px flex-shrink-0 bg-blue-500"></div>
+            <div className="mx-4 flex items-center">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full">
+                <img src="/images/icons/green.svg" alt="separator" className="h-4 w-4" />
+              </div>
+            </div>
             <div
-              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-blue-700"
+              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
               onClick={() => handleQuestionClick('What technologies do you use?')}
             >
-              <span className="text-xs font-bold">What technologies do you use?</span>
+              <span className="text-[22px]">What technologies do you use?</span>
             </div>
-            <div className="mx-4 h-4 w-px flex-shrink-0 bg-blue-500"></div>
+            <div className="mx-4 flex items-center">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full">
+                <img src="/images/icons/yellow.svg" alt="separator" className="h-4 w-4" />
+              </div>
+            </div>
 
             {/* Duplicate set for seamless looping */}
             <div
-              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-blue-700"
+              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
               onClick={() => handleQuestionClick('Can you tell me more about Studio Graphene?')}
             >
-              <span className="text-xs font-bold">Can you tell me more about Studio Graphene?</span>
+              <span className="text-[22px]">Can you tell me more about Studio Graphene?</span>
             </div>
-            <div className="mx-4 h-4 w-px flex-shrink-0 bg-blue-500"></div>
+            <div className="mx-4 flex items-center">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full">
+                <img src="/images/icons/pink.svg" alt="separator" className="h-4 w-4" />
+              </div>
+            </div>
             <div
-              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-blue-700"
+              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
               onClick={() => handleQuestionClick('What AI services do you currently offer?')}
             >
-              <span className="text-xs font-bold">What AI services do you currently offer?</span>
+              <span className="text-[22px]">What AI services do you currently offer?</span>
             </div>
-            <div className="mx-4 h-4 w-px flex-shrink-0 bg-blue-500"></div>
+            <div className="mx-4 flex items-center">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full">
+                <img src="/images/icons/blue.svg" alt="separator" className="h-4 w-4" />
+              </div>
+            </div>
             <div
-              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-blue-700"
+              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
               onClick={() => handleQuestionClick('What technologies do you use?')}
             >
-              <span className="text-xs font-bold">What technologies do you use?</span>
+              <span className="text-[22px]">What technologies do you use?</span>
             </div>
-            <div className="mx-4 h-4 w-px flex-shrink-0 bg-blue-500"></div>
+            <div className="mx-4 flex items-center">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full">
+                <img src="/images/icons/green.svg" alt="separator" className="h-4 w-4" />
+              </div>
+            </div>
 
             {/* Third set for extra seamless looping */}
             <div
-              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-blue-700"
+              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
               onClick={() => handleQuestionClick('Can you tell me more about Studio Graphene?')}
             >
-              <span className="text-xs font-bold">Can you tell me more about Studio Graphene?</span>
+              <span className="text-[22px]">Can you tell me more about Studio Graphene?</span>
             </div>
-            <div className="mx-4 h-4 w-px flex-shrink-0 bg-blue-500"></div>
+            <div className="mx-4 flex items-center">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full">
+                <img src="/images/icons/yellow.svg" alt="separator" className="h-4 w-4" />
+              </div>
+            </div>
             <div
-              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-blue-700"
+              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
               onClick={() => handleQuestionClick('What AI services do you currently offer?')}
             >
-              <span className="text-xs font-bold">What AI services do you currently offer?</span>
+              <span className="text-[22px]">What AI services do you currently offer?</span>
             </div>
-            <div className="mx-4 h-4 w-px flex-shrink-0 bg-blue-500"></div>
+            <div className="mx-4 flex items-center">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full">
+                <img src="/images/icons/pink.svg" alt="separator" className="h-4 w-4" />
+              </div>
+            </div>
             <div
-              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-blue-700"
+              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
               onClick={() => handleQuestionClick('What technologies do you use?')}
             >
-              <span className="text-xs font-bold">What technologies do you use?</span>
+              <span className="text-[22px]">What technologies do you use?</span>
             </div>
           </div>
         </div>
@@ -1368,7 +1400,7 @@ export default function Home() {
 
       {/* Delete Channel Modal */}
       {isModalOpen && (
-        <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black">
+        <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-[#262525]">
           <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
             <h3 className="mb-4 text-lg font-bold text-red-600">Delete Channel Confirmation</h3>
             <p className="mb-4">
@@ -1412,7 +1444,7 @@ export default function Home() {
 
       {/* Logout Confirmation Modal */}
       {isLogoutModalOpen && (
-        <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black">
+        <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-[#262525]">
           <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
             <h3 className="mb-4 text-lg font-bold text-gray-700">Confirm Logout</h3>
             <p className="mb-6">
@@ -1436,48 +1468,6 @@ export default function Home() {
           </div>
         </div>
       )}
-
-      <style jsx>{`
-        @keyframes slide-right {
-          0% {
-            transform: translateX(-33.333%);
-          }
-          100% {
-            transform: translateX(0);
-          }
-        }
-
-        .sliding-questions {
-          animation: slide-right 20s linear infinite;
-        }
-
-        .sliding-questions:hover {
-          animation-play-state: paused;
-        }
-
-        .typing-dot {
-          animation: typing 1.4s infinite ease-in-out;
-        }
-
-        .typing-dot:nth-child(1) {
-          animation-delay: -0.32s;
-        }
-
-        .typing-dot:nth-child(2) {
-          animation-delay: -0.16s;
-        }
-
-        @keyframes typing {
-          0%,
-          80%,
-          100% {
-            opacity: 0.3;
-          }
-          40% {
-            opacity: 1;
-          }
-        }
-      `}</style>
     </div>
   );
 }
