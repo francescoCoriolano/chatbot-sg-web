@@ -1105,26 +1105,6 @@ export default function Home() {
                 )}
                 <div className="flex items-center space-x-2">
                   <span className="text-sm text-gray-500">Logged in as {username}</span>
-                  <button
-                    onClick={() => setIsLogoutModalOpen(true)}
-                    className="ml-2 flex items-center rounded-md bg-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-300 focus:ring-2 focus:ring-gray-400 focus:outline-none"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="mr-1 h-4 w-4"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                      />
-                    </svg>
-                    Logout
-                  </button>
                 </div>
               </div>
             )}
@@ -1136,12 +1116,46 @@ export default function Home() {
       {isChatOpen && (
         <div className="fixed right-4 bottom-[36px] z-40" ref={chatWindowRef}>
           <div className="flex h-[485px] w-[405px] flex-col border border-gray-200 bg-white shadow-2xl">
+            <div
+              className="cursor-pointer bg-[#262525] px-4 py-3 text-white transition-colors"
+              onClick={closeChat}
+              title="Click to close chat"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <MessageSquare className="mr-2 h-5 w-5" />
+                  <span className="text-sm font-medium">Studio Graphene</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  {renderConnectionStatus()}
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
+                      closeChat();
+                    }}
+                    className="text-xs opacity-75 transition-opacity hover:opacity-100"
+                    title="Minimize chat"
+                  >
+                    -
+                  </button>
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
+                      setIsLogoutModalOpen(true);
+                    }}
+                    className="text-xs font-bold opacity-75 transition-opacity hover:opacity-100"
+                    title="Logout"
+                  >
+                    X
+                  </button>
+                </div>
+              </div>
+            </div>
             {isSettingUsername ? (
               <div className="flex h-full items-center justify-center p-6">
                 <div className="w-full text-center">
-                  <MessageSquare className="mx-auto mb-3 h-8 w-8 text-blue-600" />
-                  <h2 className="mb-2 text-lg font-bold text-gray-900">Welcome to Chat</h2>
-                  <p className="mb-4 text-sm text-gray-600">Enter your username to start</p>
+                  <p className="mb-4 text-sm text-gray-600">Welcome</p>
+                  <h2 className="mb-2 text-lg font-bold text-gray-900">Let&apos;s talk!</h2>
 
                   <form onSubmit={handleSetUsername} className="space-y-3">
                     <div>
@@ -1169,7 +1183,7 @@ export default function Home() {
             ) : (
               <>
                 {/* Chat Header - Clickable to close */}
-                <div
+                {/* <div
                   className="cursor-pointer bg-[#262525] px-4 py-3 text-white transition-colors"
                   onClick={closeChat}
                   title="Click to close chat"
@@ -1177,17 +1191,36 @@ export default function Home() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center">
                       <MessageSquare className="mr-2 h-5 w-5" />
-                      <span className="text-sm font-medium">Chat</span>
+                      <span className="text-sm font-medium">Studio Graphene</span>
                     </div>
                     <div className="flex items-center space-x-2">
                       {renderConnectionStatus()}
-                      <span className="text-xs font-bold opacity-75">___</span>
+                      <button
+                        onClick={e => {
+                          e.stopPropagation();
+                          closeChat();
+                        }}
+                        className="text-xs opacity-75 transition-opacity hover:opacity-100"
+                        title="Minimize chat"
+                      >
+                        -
+                      </button>
+                      <button
+                        onClick={e => {
+                          e.stopPropagation();
+                          setIsLogoutModalOpen(true);
+                        }}
+                        className="text-xs font-bold opacity-75 transition-opacity hover:opacity-100"
+                        title="Logout"
+                      >
+                        X
+                      </button>
                     </div>
                   </div>
-                </div>
+                </div> */}
 
                 {/* Messages Area */}
-                <div className="flex-1 space-y-2 overflow-y-auto bg-gray-50 p-3">
+                <div className="relative flex-1 space-y-2 overflow-y-auto bg-gray-50 p-3">
                   {error && (
                     <div
                       className="relative rounded border border-yellow-200 bg-yellow-50 px-2 py-1 text-xs text-yellow-700"
@@ -1200,6 +1233,33 @@ export default function Home() {
                   {successMessage && (
                     <div className="relative rounded border border-green-200 bg-green-50 px-2 py-1 text-xs text-green-800">
                       <span className="block">{successMessage}</span>
+                    </div>
+                  )}
+
+                  {/* Logout Modal - Inside Chat Window */}
+                  {isLogoutModalOpen && (
+                    <div className="bg-opacity-50 absolute inset-0 z-50 flex items-center justify-center bg-black">
+                      <div className="w-full max-w-xs rounded-lg bg-white p-4 shadow-lg">
+                        <h3 className="mb-3 text-sm font-bold text-gray-700">Confirm Logout</h3>
+                        <p className="mb-4 text-xs text-gray-600">
+                          Are you sure you want to log out? This will clear your message history and
+                          you&apos;ll need to enter your username again to continue.
+                        </p>
+                        <div className="flex justify-end space-x-2">
+                          <button
+                            onClick={() => setIsLogoutModalOpen(false)}
+                            className="rounded bg-gray-300 px-3 py-1 text-xs hover:bg-gray-400"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={confirmLogout}
+                            className="rounded bg-blue-500 px-3 py-1 text-xs text-white hover:bg-blue-600"
+                          >
+                            Confirm Logout
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   )}
 
@@ -1436,33 +1496,6 @@ export default function Home() {
                 className="rounded bg-red-500 px-4 py-2 text-white hover:bg-red-600 disabled:bg-red-300"
               >
                 {isDeletingChannel ? 'Deleting...' : 'Confirm Delete & Logout'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Logout Confirmation Modal */}
-      {isLogoutModalOpen && (
-        <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-[#262525]">
-          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
-            <h3 className="mb-4 text-lg font-bold text-gray-700">Confirm Logout</h3>
-            <p className="mb-6">
-              Are you sure you want to log out? This will clear your message history and you&apos;ll
-              need to enter your username again to continue.
-            </p>
-            <div className="flex justify-end space-x-2">
-              <button
-                onClick={() => setIsLogoutModalOpen(false)}
-                className="rounded bg-gray-300 px-4 py-2 hover:bg-gray-400"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmLogout}
-                className="rounded bg-blue-500 px-4 py-2 text-white hover:bg-blue-600"
-              >
-                Confirm Logout
               </button>
             </div>
           </div>
