@@ -1116,12 +1116,46 @@ export default function Home() {
       {isChatOpen && (
         <div className="fixed right-4 bottom-[36px] z-40" ref={chatWindowRef}>
           <div className="flex h-[485px] w-[405px] flex-col border border-gray-200 bg-white shadow-2xl">
+            <div
+              className="cursor-pointer bg-[#262525] px-4 py-3 text-white transition-colors"
+              onClick={closeChat}
+              title="Click to close chat"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <MessageSquare className="mr-2 h-5 w-5" />
+                  <span className="text-sm font-medium">Studio Graphene</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  {renderConnectionStatus()}
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
+                      closeChat();
+                    }}
+                    className="text-xs opacity-75 transition-opacity hover:opacity-100"
+                    title="Minimize chat"
+                  >
+                    -
+                  </button>
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
+                      setIsLogoutModalOpen(true);
+                    }}
+                    className="text-xs font-bold opacity-75 transition-opacity hover:opacity-100"
+                    title="Logout"
+                  >
+                    X
+                  </button>
+                </div>
+              </div>
+            </div>
             {isSettingUsername ? (
               <div className="flex h-full items-center justify-center p-6">
                 <div className="w-full text-center">
-                  <MessageSquare className="mx-auto mb-3 h-8 w-8 text-blue-600" />
-                  <h2 className="mb-2 text-lg font-bold text-gray-900">Welcome to Chat</h2>
-                  <p className="mb-4 text-sm text-gray-600">Enter your username to start</p>
+                  <p className="mb-4 text-sm text-gray-600">Welcome</p>
+                  <h2 className="mb-2 text-lg font-bold text-gray-900">Let&apos;s talk!</h2>
 
                   <form onSubmit={handleSetUsername} className="space-y-3">
                     <div>
@@ -1149,7 +1183,7 @@ export default function Home() {
             ) : (
               <>
                 {/* Chat Header - Clickable to close */}
-                <div
+                {/* <div
                   className="cursor-pointer bg-[#262525] px-4 py-3 text-white transition-colors"
                   onClick={closeChat}
                   title="Click to close chat"
@@ -1157,7 +1191,7 @@ export default function Home() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center">
                       <MessageSquare className="mr-2 h-5 w-5" />
-                      <span className="text-sm font-medium">Chat</span>
+                      <span className="text-sm font-medium">Studio Graphene</span>
                     </div>
                     <div className="flex items-center space-x-2">
                       {renderConnectionStatus()}
@@ -1183,7 +1217,7 @@ export default function Home() {
                       </button>
                     </div>
                   </div>
-                </div>
+                </div> */}
 
                 {/* Messages Area */}
                 <div className="relative flex-1 space-y-2 overflow-y-auto bg-gray-50 p-3">
