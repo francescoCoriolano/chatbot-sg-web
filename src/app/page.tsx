@@ -1105,26 +1105,6 @@ export default function Home() {
                 )}
                 <div className="flex items-center space-x-2">
                   <span className="text-sm text-gray-500">Logged in as {username}</span>
-                  <button
-                    onClick={() => setIsLogoutModalOpen(true)}
-                    className="ml-2 flex items-center rounded-md bg-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-300 focus:ring-2 focus:ring-gray-400 focus:outline-none"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="mr-1 h-4 w-4"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                      />
-                    </svg>
-                    Logout
-                  </button>
                 </div>
               </div>
             )}
@@ -1181,13 +1161,32 @@ export default function Home() {
                     </div>
                     <div className="flex items-center space-x-2">
                       {renderConnectionStatus()}
-                      <span className="text-xs font-bold opacity-75">___</span>
+                      <button
+                        onClick={e => {
+                          e.stopPropagation();
+                          closeChat();
+                        }}
+                        className="text-xs opacity-75 transition-opacity hover:opacity-100"
+                        title="Minimize chat"
+                      >
+                        -
+                      </button>
+                      <button
+                        onClick={e => {
+                          e.stopPropagation();
+                          setIsLogoutModalOpen(true);
+                        }}
+                        className="text-xs font-bold opacity-75 transition-opacity hover:opacity-100"
+                        title="Logout"
+                      >
+                        X
+                      </button>
                     </div>
                   </div>
                 </div>
 
                 {/* Messages Area */}
-                <div className="flex-1 space-y-2 overflow-y-auto bg-gray-50 p-3">
+                <div className="relative flex-1 space-y-2 overflow-y-auto bg-gray-50 p-3">
                   {error && (
                     <div
                       className="relative rounded border border-yellow-200 bg-yellow-50 px-2 py-1 text-xs text-yellow-700"
@@ -1200,6 +1199,33 @@ export default function Home() {
                   {successMessage && (
                     <div className="relative rounded border border-green-200 bg-green-50 px-2 py-1 text-xs text-green-800">
                       <span className="block">{successMessage}</span>
+                    </div>
+                  )}
+
+                  {/* Logout Modal - Inside Chat Window */}
+                  {isLogoutModalOpen && (
+                    <div className="bg-opacity-50 absolute inset-0 z-50 flex items-center justify-center bg-black">
+                      <div className="w-full max-w-xs rounded-lg bg-white p-4 shadow-lg">
+                        <h3 className="mb-3 text-sm font-bold text-gray-700">Confirm Logout</h3>
+                        <p className="mb-4 text-xs text-gray-600">
+                          Are you sure you want to log out? This will clear your message history and
+                          you&apos;ll need to enter your username again to continue.
+                        </p>
+                        <div className="flex justify-end space-x-2">
+                          <button
+                            onClick={() => setIsLogoutModalOpen(false)}
+                            className="rounded bg-gray-300 px-3 py-1 text-xs hover:bg-gray-400"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={confirmLogout}
+                            className="rounded bg-blue-500 px-3 py-1 text-xs text-white hover:bg-blue-600"
+                          >
+                            Confirm Logout
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   )}
 
@@ -1436,33 +1462,6 @@ export default function Home() {
                 className="rounded bg-red-500 px-4 py-2 text-white hover:bg-red-600 disabled:bg-red-300"
               >
                 {isDeletingChannel ? 'Deleting...' : 'Confirm Delete & Logout'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Logout Confirmation Modal */}
-      {isLogoutModalOpen && (
-        <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-[#262525]">
-          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
-            <h3 className="mb-4 text-lg font-bold text-gray-700">Confirm Logout</h3>
-            <p className="mb-6">
-              Are you sure you want to log out? This will clear your message history and you&apos;ll
-              need to enter your username again to continue.
-            </p>
-            <div className="flex justify-end space-x-2">
-              <button
-                onClick={() => setIsLogoutModalOpen(false)}
-                className="rounded bg-gray-300 px-4 py-2 hover:bg-gray-400"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmLogout}
-                className="rounded bg-blue-500 px-4 py-2 text-white hover:bg-blue-600"
-              >
-                Confirm Logout
               </button>
             </div>
           </div>
