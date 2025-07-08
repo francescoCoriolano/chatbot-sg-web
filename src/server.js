@@ -20,7 +20,10 @@ const recentMessages = {
 // Store channels created for each user
 const userChannels = {};
 
-// Store Slack user ID mappings
+// Store reverse mapping from channel ID to user key
+const channelToUserKey = {};
+
+// Store Slack user ID mappings (using userKey instead of just username)
 const slackUserIds = {};
 
 // Define default users that will be added to all channels
@@ -32,6 +35,7 @@ const DEFAULT_USERS = [
 // Make these accessible globally
 global.recentMessages = recentMessages;
 global.userChannels = userChannels;
+global.channelToUserKey = channelToUserKey;
 global.slackUserIds = slackUserIds;
 
 // Initialize DEFAULT_USERS if not already set
@@ -169,25 +173,39 @@ app.prepare().then(() => {
   };
 
   // Helper function to create or get a channel for a user
-  const getOrCreateChannelForUser = async username => {
-    console.log(`Checking for channel for user: ${username}`);
-    console.log(`Current userChannels:`, userChannels);
+  const getOrCreateChannelForUser = async (username, email) => {
+    console.log(`🔍 Checking for channel for user: ${username} with email: ${email}`);
+
+    if (!username || !email) {
+      console.error('❌ Username or email missing in getOrCreateChannelForUser');
+      return process.env.SLACK_CHANNEL_ID; // Fallback to default channel
+    }
+
+    console.log(`📊 Current userChannels:`, Object.keys(userChannels));
+
+    // Create a unique key for this user combining username and email
+    const userKey = `${username}:${email}`;
+    console.log(`🔑 UserKey: ${userKey}`);
 
     // Check if we already have a channel for this user
-    if (userChannels[username]) {
-      console.log(`Found existing channel for ${username}: ${userChannels[username]}`);
-      return userChannels[username];
+    if (userChannels[userKey]) {
+      console.log(`✅ Found existing channel for ${username} (${email}): ${userChannels[userKey]}`);
+      return userChannels[userKey];
     }
 
     // Create a new channel for this user if we don't have one
     try {
-      console.log(`Creating new Slack channel for user: ${username}`);
+      console.log(`🆕 Creating new Slack channel for user: ${username} with email: ${email}`);
 
-      // Create channel name (lowercase, no spaces, max 80 chars)
-      const channelName = `chat-app-${username
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, '-')
-        .substring(0, 70)}`;
+      // Create channel name with better sanitization for Slack requirements
+      // Slack channel names can only contain lowercase letters, numbers, hyphens, and underscores
+      // They cannot contain @ . or other special characters
+      const sanitizedUsername = username.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const sanitizedEmail = email.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+      const channelName = `user-${sanitizedUsername}-email-${sanitizedEmail}`.substring(0, 80);
+
+      console.log(`📛 Channel name will be: ${channelName}`);
 
       // Create the channel
       const result = await slackApp.client.conversations.create({
@@ -195,21 +213,27 @@ app.prepare().then(() => {
         is_private: false,
       });
 
-      // Store the channel ID
+      // Store the channel ID using the unique key
       const channelId = result.channel.id;
-      userChannels[username] = channelId;
+      userChannels[userKey] = channelId;
+
+      // Store reverse mapping from channel ID to userKey
+      channelToUserKey[channelId] = userKey;
 
       // Make sure it's also available globally
-      global.userChannels[username] = channelId;
+      global.userChannels[userKey] = channelId;
+      global.channelToUserKey[channelId] = userKey;
 
-      console.log(`✅ Created new channel for ${username}: ${channelId} (${channelName})`);
-      console.log(`Updated userChannels:`, userChannels);
-      console.log(`Global userChannels:`, global.userChannels);
+      console.log(
+        `✅ Created new channel for ${username} (${email}): ${channelId} (${channelName})`,
+      );
+      console.log(`📊 Updated userChannels:`, Object.keys(userChannels));
+      console.log(`🔄 Updated channelToUserKey:`, Object.keys(channelToUserKey));
 
       // Announce in the channel
       await slackApp.client.chat.postMessage({
         channel: channelId,
-        text: `:tada: This channel has been created for *${username}* from the Chat App.\nMessages from this user will appear here.`,
+        text: `:tada: This channel has been created for *${username}* (${email}) from the Chat App.\nMessages from this user will appear here.`,
       });
 
       // Invite the default users to the channel
@@ -239,9 +263,27 @@ app.prepare().then(() => {
 
       return channelId;
     } catch (error) {
-      console.error(`❌ Error creating channel for user ${username}:`, error.message || error);
+      console.error(
+        `❌ Error creating channel for user ${username} (${email}):`,
+        error.message || error,
+      );
+
+      // Store the fallback mapping to prevent repeated attempts
+      const fallbackChannelId = process.env.SLACK_CHANNEL_ID;
+      userChannels[userKey] = fallbackChannelId;
+      channelToUserKey[fallbackChannelId] = userKey;
+
+      // Make sure it's also available globally
+      global.userChannels[userKey] = fallbackChannelId;
+      global.channelToUserKey[fallbackChannelId] = userKey;
+
+      console.log(
+        `⚠️ Stored fallback channel mapping for ${username} (${email}): ${fallbackChannelId}`,
+      );
+      console.log(`📊 Updated userChannels:`, Object.keys(userChannels));
+
       // Fallback to default channel
-      return process.env.SLACK_CHANNEL_ID;
+      return fallbackChannelId;
     }
   };
 
@@ -255,15 +297,17 @@ app.prepare().then(() => {
       slackApp.event('app_home_opened', async ({ event, client }) => {
         console.log(`App Home opened by user ${event.user}`);
 
-        // Find the username associated with this Slack user ID
+        // Find the userKey associated with this Slack user ID
         let username = null;
+        let userKey = null;
         let channelId = null;
 
         // Look up by Slack user ID
-        for (const [uname, slackId] of Object.entries(slackUserIds)) {
+        for (const [ukey, slackId] of Object.entries(slackUserIds)) {
           if (slackId === event.user) {
-            username = uname;
-            channelId = userChannels[uname];
+            userKey = ukey;
+            username = ukey.split(':')[0]; // Extract username from userKey
+            channelId = userChannels[ukey];
             break;
           }
         }
@@ -332,23 +376,24 @@ app.prepare().then(() => {
         // Find the username associated with this channel
         const channelName = channelInfo.channel.name;
         let targetUser = null;
+        let targetUserKey = null;
 
-        // Find which user this channel belongs to
-        for (const [username, channelId] of Object.entries(userChannels)) {
-          if (channelId === message.channel) {
-            targetUser = username;
+        // Use reverse mapping to find the userKey for this channel
+        targetUserKey = channelToUserKey[message.channel];
 
-            // Store the Slack user ID for this username if we haven't already
-            if (!slackUserIds[username] && message.user) {
-              slackUserIds[username] = message.user;
-              console.log(`Associated Slack user ID ${message.user} with username ${username}`);
+        if (targetUserKey) {
+          // Extract username from userKey (format: "username:email")
+          targetUser = targetUserKey.split(':')[0];
 
-              // If this is the first message from this user, update their App Home
-              if (channelId) {
-                updateAppHome(message.user, channelId, channelName, username);
-              }
+          // Store the Slack user ID for this userKey if we haven't already
+          if (!slackUserIds[targetUserKey] && message.user) {
+            slackUserIds[targetUserKey] = message.user;
+            console.log(`Associated Slack user ID ${message.user} with userKey ${targetUserKey}`);
+
+            // If this is the first message from this user, update their App Home
+            if (message.channel) {
+              updateAppHome(message.user, message.channel, channelName, targetUser);
             }
-            break;
           }
         }
 
@@ -384,63 +429,63 @@ app.prepare().then(() => {
 
         const archivedChannelId = event.channel;
 
-        // Find username associated with this channel and remove it from userChannels
-        for (const [username, channelId] of Object.entries(userChannels)) {
-          if (channelId === archivedChannelId) {
-            console.log(
-              `Removing archived channel ${archivedChannelId} for user ${username} from userChannels`,
-            );
+        // Use reverse mapping to find the userKey for this channel
+        const userKey = channelToUserKey[archivedChannelId];
 
-            // Get the Slack user ID for this username
-            const slackUserId = slackUserIds[username];
+        if (userKey) {
+          const username = userKey.split(':')[0]; // Extract username from userKey
+          console.log(
+            `Removing archived channel ${archivedChannelId} for userKey ${userKey} from userChannels`,
+          );
 
-            // Remove the channel from userChannels
-            delete userChannels[username];
+          // Get the Slack user ID for this userKey
+          const slackUserId = slackUserIds[userKey];
 
-            // If we have a Slack user ID for this user, update their App Home
-            if (slackUserId) {
-              try {
-                // Show generic welcome screen since the channel is now gone
-                const blocks = [
-                  {
-                    type: 'header',
-                    text: {
-                      type: 'plain_text',
-                      text: 'Welcome to Chat App!',
-                      emoji: true,
-                    },
+          // Remove the channel from userChannels and reverse mapping
+          delete userChannels[userKey];
+          delete channelToUserKey[archivedChannelId];
+
+          // If we have a Slack user ID for this user, update their App Home
+          if (slackUserId) {
+            try {
+              // Show generic welcome screen since the channel is now gone
+              const blocks = [
+                {
+                  type: 'header',
+                  text: {
+                    type: 'plain_text',
+                    text: 'Welcome to Chat App!',
+                    emoji: true,
                   },
-                  {
-                    type: 'divider',
+                },
+                {
+                  type: 'divider',
+                },
+                {
+                  type: 'section',
+                  text: {
+                    type: 'mrkdwn',
+                    text: 'Your channel has been deleted. The next time you send a message, a new channel will be created for you.',
                   },
-                  {
-                    type: 'section',
-                    text: {
-                      type: 'mrkdwn',
-                      text: 'Your channel has been deleted. The next time you send a message, a new channel will be created for you.',
-                    },
-                  },
-                ];
+                },
+              ];
 
-                // Publish the generic view
-                await slackApp.client.views.publish({
-                  user_id: slackUserId,
-                  view: {
-                    type: 'home',
-                    blocks,
-                  },
-                });
+              // Publish the generic view
+              await slackApp.client.views.publish({
+                user_id: slackUserId,
+                view: {
+                  type: 'home',
+                  blocks,
+                },
+              });
 
-                console.log(`✅ Updated App Home for user ${slackUserId} after channel deletion`);
-              } catch (error) {
-                console.error(
-                  `❌ Error updating App Home for user ${slackUserId}:`,
-                  error.message || error,
-                );
-              }
+              console.log(`✅ Updated App Home for user ${slackUserId} after channel deletion`);
+            } catch (error) {
+              console.error(
+                `❌ Error updating App Home for user ${slackUserId}:`,
+                error.message || error,
+              );
             }
-
-            break;
           }
         }
       });
@@ -451,63 +496,63 @@ app.prepare().then(() => {
 
         const deletedChannelId = event.channel;
 
-        // Find username associated with this channel and remove it from userChannels
-        for (const [username, channelId] of Object.entries(userChannels)) {
-          if (channelId === deletedChannelId) {
-            console.log(
-              `Removing deleted channel ${deletedChannelId} for user ${username} from userChannels`,
-            );
+        // Use reverse mapping to find the userKey for this channel
+        const userKey = channelToUserKey[deletedChannelId];
 
-            // Get the Slack user ID for this username
-            const slackUserId = slackUserIds[username];
+        if (userKey) {
+          const username = userKey.split(':')[0]; // Extract username from userKey
+          console.log(
+            `Removing deleted channel ${deletedChannelId} for userKey ${userKey} from userChannels`,
+          );
 
-            // Remove the channel from userChannels
-            delete userChannels[username];
+          // Get the Slack user ID for this userKey
+          const slackUserId = slackUserIds[userKey];
 
-            // If we have a Slack user ID for this user, update their App Home
-            if (slackUserId) {
-              try {
-                // Show generic welcome screen since the channel is now gone
-                const blocks = [
-                  {
-                    type: 'header',
-                    text: {
-                      type: 'plain_text',
-                      text: 'Welcome to Chat App!',
-                      emoji: true,
-                    },
+          // Remove the channel from userChannels and reverse mapping
+          delete userChannels[userKey];
+          delete channelToUserKey[deletedChannelId];
+
+          // If we have a Slack user ID for this user, update their App Home
+          if (slackUserId) {
+            try {
+              // Show generic welcome screen since the channel is now gone
+              const blocks = [
+                {
+                  type: 'header',
+                  text: {
+                    type: 'plain_text',
+                    text: 'Welcome to Chat App!',
+                    emoji: true,
                   },
-                  {
-                    type: 'divider',
+                },
+                {
+                  type: 'divider',
+                },
+                {
+                  type: 'section',
+                  text: {
+                    type: 'mrkdwn',
+                    text: 'Your channel has been deleted. The next time you send a message, a new channel will be created for you.',
                   },
-                  {
-                    type: 'section',
-                    text: {
-                      type: 'mrkdwn',
-                      text: 'Your channel has been deleted. The next time you send a message, a new channel will be created for you.',
-                    },
-                  },
-                ];
+                },
+              ];
 
-                // Publish the generic view
-                await slackApp.client.views.publish({
-                  user_id: slackUserId,
-                  view: {
-                    type: 'home',
-                    blocks,
-                  },
-                });
+              // Publish the generic view
+              await slackApp.client.views.publish({
+                user_id: slackUserId,
+                view: {
+                  type: 'home',
+                  blocks,
+                },
+              });
 
-                console.log(`✅ Updated App Home for user ${slackUserId} after channel deletion`);
-              } catch (error) {
-                console.error(
-                  `❌ Error updating App Home for user ${slackUserId}:`,
-                  error.message || error,
-                );
-              }
+              console.log(`✅ Updated App Home for user ${slackUserId} after channel deletion`);
+            } catch (error) {
+              console.error(
+                `❌ Error updating App Home for user ${slackUserId}:`,
+                error.message || error,
+              );
             }
-
-            break;
           }
         }
       });
@@ -552,11 +597,35 @@ app.prepare().then(() => {
 
     // Handle chat messages from clients
     socket.on('chat_message', async data => {
+      console.log('🔥 RAW SOCKET DATA RECEIVED:', JSON.stringify(data, null, 2));
+
       // Add isFromSlack=false flag if not present
       const message = {
         ...data,
         isFromSlack: false,
       };
+
+      console.log('📨 PROCESSED MESSAGE OBJECT:', {
+        id: message.id,
+        sender: message.sender,
+        email: message.email,
+        text: message.text ? message.text.substring(0, 50) + '...' : 'NO TEXT',
+        hasEmail: !!message.email,
+        hasUsername: !!message.sender,
+        allKeys: Object.keys(message),
+      });
+
+      // Validate required fields
+      if (!message.sender) {
+        console.error('❌ NO SENDER in message:', message);
+        return;
+      }
+
+      if (!message.email) {
+        console.error('❌ NO EMAIL in message:', message);
+        console.error('❌ Falling back to default channel due to missing email');
+        // Don't return here, let it fall back to default channel behavior
+      }
 
       // Store the message in our recent messages cache
       recentMessages.chat_message.push(message);
@@ -570,14 +639,26 @@ app.prepare().then(() => {
       // Send to Slack if bot token is available
       if (process.env.SLACK_BOT_TOKEN) {
         try {
-          // Get channel ID for the message sender
-          const channelId = await getOrCreateChannelForUser(message.sender);
+          console.log(
+            `🚀 Attempting to get/create channel for user: "${message.sender}" with email: "${message.email}"`,
+          );
+
+          let channelId;
+          if (message.email) {
+            // Get channel ID for the message sender with email
+            channelId = await getOrCreateChannelForUser(message.sender, message.email);
+          } else {
+            console.warn('⚠️ No email provided, using default channel');
+            channelId = process.env.SLACK_CHANNEL_ID;
+          }
+
+          console.log(`📺 Got channel ID: ${channelId} for user ${message.sender}`);
 
           // Send message to Slack
           slackApp.client.chat
             .postMessage({
               channel: channelId,
-              text: `From ${message.sender}: ${message.text}`,
+              text: `From ${message.sender}${message.email ? ` (${message.email})` : ''}: ${message.text}`,
               unfurl_links: false,
               unfurl_media: false,
             })
@@ -594,20 +675,25 @@ app.prepare().then(() => {
               // If this message was posted by a Slack user who sent previous messages,
               // update their App Home too
               try {
-                if (message.slackUserId || slackUserIds[message.sender]) {
-                  const slackUserId = message.slackUserId || slackUserIds[message.sender];
+                if (message.email) {
+                  // Create userKey for lookup
+                  const userKey = `${message.sender}:${message.email}`;
 
-                  // Get channel info for the name
-                  const channelInfo = await slackApp.client.conversations.info({
-                    channel: channelId,
-                  });
+                  if (message.slackUserId || slackUserIds[userKey]) {
+                    const slackUserId = message.slackUserId || slackUserIds[userKey];
 
-                  await updateAppHome(
-                    slackUserId,
-                    channelId,
-                    channelInfo.channel.name,
-                    message.sender,
-                  );
+                    // Get channel info for the name
+                    const channelInfo = await slackApp.client.conversations.info({
+                      channel: channelId,
+                    });
+
+                    await updateAppHome(
+                      slackUserId,
+                      channelId,
+                      channelInfo.channel.name,
+                      message.sender,
+                    );
+                  }
                 }
               } catch (homeError) {
                 console.error('Error updating App Home after message send:', homeError);

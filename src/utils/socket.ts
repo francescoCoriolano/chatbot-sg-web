@@ -197,10 +197,24 @@ export const isUsingSocketMode = () => {
 };
 
 export const sendMessageViaSocket = (message: any) => {
+  console.log('🔥 SOCKET UTILS: sendMessageViaSocket called with:', {
+    id: message.id,
+    sender: message.sender,
+    email: message.email,
+    text: message.text ? message.text.substring(0, 50) + '...' : 'NO TEXT',
+    hasEmail: !!message.email,
+    hasUsername: !!message.sender,
+    allKeys: Object.keys(message),
+  });
+
   const socket = getSocket();
   if (socket && socket.connected) {
+    console.log('🔥 SOCKET UTILS: Socket is connected, emitting chat_message');
     socket.emit('chat_message', message);
+    console.log('🔥 SOCKET UTILS: Message emitted successfully');
     return true;
+  } else {
+    console.log('🔥 SOCKET UTILS: Socket not connected, returning false');
   }
   return false;
 };

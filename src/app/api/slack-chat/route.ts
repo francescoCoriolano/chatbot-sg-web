@@ -10,21 +10,24 @@ declare global {
 }
 
 // Helper function to get recent messages from our global cache
-const getRecentMessages = (username?: string) => {
+const getRecentMessages = (username?: string, email?: string) => {
   try {
     if (typeof global !== 'undefined' && global.recentMessages) {
-      if (!username) {
+      if (!username || !email) {
         return [...global.recentMessages.slack_message];
       }
 
-      // If username is provided, filter messages to only those from the user's channel
-      const userChannelId = global.userChannels?.[username];
+      // Create userKey from username and email
+      const userKey = `${username}:${email}`;
+
+      // If username and email are provided, filter messages to only those from the user's channel
+      const userChannelId = global.userChannels?.[userKey];
       if (!userChannelId) {
-        console.log(`No channel found for user ${username}, returning empty messages`);
+        console.log(`No channel found for userKey ${userKey}, returning empty messages`);
         return [];
       }
 
-      console.log(`Filtering messages for user ${username} with channel ${userChannelId}`);
+      console.log(`Filtering messages for userKey ${userKey} with channel ${userChannelId}`);
       // Filter to messages that are either sent by this user, or in their channel
       return [...global.recentMessages.slack_message].filter(
         msg =>
@@ -40,13 +43,16 @@ const getRecentMessages = (username?: string) => {
 // Return cached messages from Socket Mode
 export async function GET(req: NextRequest) {
   try {
-    // Get username from query parameter
+    // Get username and email from query parameters
     const { searchParams } = new URL(req.url);
     const username = searchParams.get('username');
+    const email = searchParams.get('email');
 
-    const messages = getRecentMessages(username || undefined);
+    const messages = getRecentMessages(username || undefined, email || undefined);
 
-    console.log(`Returning ${messages.length} messages for ${username || 'all users'}`);
+    console.log(
+      `Returning ${messages.length} messages for ${username || 'all users'}${email ? ` (${email})` : ''}`,
+    );
 
     return NextResponse.json({
       messages,
@@ -68,10 +74,13 @@ export async function GET(req: NextRequest) {
 // Fallback API for clients that can't use WebSockets
 export async function POST(req: NextRequest) {
   try {
-    const { message, sender, userId, clientMessageId } = await req.json();
+    const { message, sender, email, userId, clientMessageId } = await req.json();
 
-    if (!message || !sender) {
-      return NextResponse.json({ error: 'Message and sender are required' }, { status: 400 });
+    if (!message || !sender || !email) {
+      return NextResponse.json(
+        { error: 'Message, sender, and email are required' },
+        { status: 400 },
+      );
     }
 
     // Format the chat message
@@ -79,6 +88,7 @@ export async function POST(req: NextRequest) {
       id: clientMessageId || Date.now().toString(),
       text: message,
       sender,
+      email,
       userId: userId || 'anonymous',
       timestamp: new Date().toISOString(),
       isFromSlack: false,

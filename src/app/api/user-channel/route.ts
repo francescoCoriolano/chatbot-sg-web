@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 // Global declarations for server-side state
 declare global {
   var userChannels: Record<string, string>;
+  var channelToUserKey: Record<string, string>;
   var slackApp: any; // Using any for the Slack app type
 }
 
@@ -11,17 +12,21 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const username = searchParams.get('username');
+    const email = searchParams.get('email');
 
-    if (!username) {
-      return NextResponse.json({ error: 'Username is required' }, { status: 400 });
+    if (!username || !email) {
+      return NextResponse.json({ error: 'Username and email are required' }, { status: 400 });
     }
 
-    console.log(`[API] Checking channel for user: ${username}`);
+    // Create userKey from username and email
+    const userKey = `${username}:${email}`;
+
+    console.log(`[API] Checking channel for userKey: ${userKey}`);
     console.log(`[API] Current userChannels:`, global.userChannels);
 
     // Check if we already have a channel for this user
-    if (typeof global.userChannels !== 'undefined' && global.userChannels[username]) {
-      console.log(`[API] Found channel for user ${username}: ${global.userChannels[username]}`);
+    if (typeof global.userChannels !== 'undefined' && global.userChannels[userKey]) {
+      console.log(`[API] Found channel for userKey ${userKey}: ${global.userChannels[userKey]}`);
 
       // Get channel info from Slack
       try {
@@ -30,7 +35,7 @@ export async function GET(req: NextRequest) {
           console.log(`[API] Slack app not initialized, returning channel ID only`);
           return NextResponse.json(
             {
-              channelId: global.userChannels[username],
+              channelId: global.userChannels[userKey],
               message: 'Channel found for user (Slack app not initialized)',
             },
             { status: 200 },
@@ -38,24 +43,24 @@ export async function GET(req: NextRequest) {
         }
 
         const channelInfo = await slackApp.client.conversations.info({
-          channel: global.userChannels[username],
+          channel: global.userChannels[userKey],
         });
 
         console.log(`[API] Got channel info: ${channelInfo.channel.name}`);
         return NextResponse.json({
-          channelId: global.userChannels[username],
+          channelId: global.userChannels[userKey],
           channelName: channelInfo.channel.name,
           message: 'Channel found for user',
         });
       } catch (error) {
         console.error('[API] Error getting channel info:', error);
         return NextResponse.json({
-          channelId: global.userChannels[username],
+          channelId: global.userChannels[userKey],
           message: 'Channel ID exists but could not get details',
         });
       }
     } else {
-      console.log(`[API] No channel found for user ${username}`);
+      console.log(`[API] No channel found for userKey ${userKey}`);
     }
 
     // Channel not found, let the server create it
