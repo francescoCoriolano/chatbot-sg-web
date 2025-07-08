@@ -68,6 +68,15 @@ export default function Home() {
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState<boolean>(false);
   // Add state for chat window visibility
   const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
+  // Add state to track if user has started chatting (to hide Chat Trigger Bar)
+  const [hasStartedChatting, setHasStartedChatting] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('has-started-chatting') === 'true';
+    }
+    return false;
+  });
+  // Add state for chat minimize functionality
+  const [isChatMinimized, setIsChatMinimized] = useState(false);
 
   // Add state for selected question
   const [selectedQuestion, setSelectedQuestion] = useState<string | null>(null);
@@ -116,6 +125,11 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem('chat-email', email);
   }, [email]);
+
+  // Sync hasStartedChatting state with localStorage
+  useEffect(() => {
+    localStorage.setItem('has-started-chatting', hasStartedChatting.toString());
+  }, [hasStartedChatting]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -627,7 +641,10 @@ export default function Home() {
     if (username.trim() && email.trim()) {
       // Set flag that we're setting username
       setIsSettingUsername(false);
+      // Set flag that user has started chatting (for localStorage persistence)
+      setHasStartedChatting(true);
       console.log('📝 Set isSettingUsername to false');
+      console.log('📝 Set hasStartedChatting to true');
 
       // Clear any old messages
       localStorage.setItem('chat-messages', '[]');
@@ -842,6 +859,8 @@ export default function Home() {
           setUserChannel(null);
           setUserChannelName(null);
           setIsSettingUsername(true);
+          setIsChatOpen(false);
+          setIsChatMinimized(false);
           sentMessageIds.clear();
           slackTimestamps.clear();
           setSuccessMessage('');
@@ -873,23 +892,22 @@ export default function Home() {
     // Clear username from localStorage
     localStorage.removeItem('chat-username');
     localStorage.removeItem('chat-email');
-
-    // Clear messages from localStorage
     localStorage.removeItem('chat-messages');
+    localStorage.removeItem('has-started-chatting');
 
-    // Ensure localStorage is empty by setting an empty array
-    localStorage.setItem('chat-messages', '[]');
-
-    // Disconnect from socket
+    // Disconnect socket
     disconnectSocket();
 
-    // Reset state
+    // Reset states
     setUsername('');
     setEmail('');
     setMessages([]);
     setUserChannel(null);
     setUserChannelName(null);
     setIsSettingUsername(true);
+    setHasStartedChatting(false);
+    setIsChatOpen(false);
+    setIsChatMinimized(false);
     sentMessageIds.clear();
     slackTimestamps.clear();
     setSuccessMessage('');
@@ -956,6 +974,11 @@ export default function Home() {
   const toggleChat = () => {
     setIsChatOpen(!isChatOpen);
 
+    // Reset minimized state when opening chat
+    if (!isChatOpen) {
+      setIsChatMinimized(false);
+    }
+
     // Focus message input when opening chat (if not setting username)
     if (!isChatOpen && !isSettingUsername) {
       setTimeout(() => {
@@ -967,6 +990,17 @@ export default function Home() {
   // Close chat window
   const closeChat = () => {
     setIsChatOpen(false);
+    setIsChatMinimized(false);
+  };
+
+  // Minimize chat window (show only header)
+  const minimizeChat = () => {
+    setIsChatMinimized(true);
+  };
+
+  // Restore chat window from minimized state
+  const restoreChat = () => {
+    setIsChatMinimized(false);
   };
 
   const handleQuestionClick = (question: string) => {
@@ -1051,12 +1085,16 @@ export default function Home() {
 
       {/* Chatbot Window - Fixed position bottom right */}
       {isChatOpen && (
-        <div className="fixed right-4 bottom-[36px] z-40" ref={chatWindowRef}>
-          <div className="flex h-[485px] w-[405px] flex-col border border-gray-200 bg-white shadow-2xl">
+        <div ref={chatWindowRef} className="fixed right-5 bottom-5 z-40">
+          <div
+            className={`flex ${isChatMinimized ? 'h-auto' : 'h-[485px]'} w-[405px] flex-col border border-gray-200 bg-white shadow-2xl`}
+          >
             <div
-              className="cursor-pointer bg-[#262525] px-4 py-3 text-white transition-colors"
-              onClick={closeChat}
-              title="Click to close chat"
+              className={`cursor-pointer bg-[#262525] px-4 py-3 text-white transition-colors ${
+                isChatMinimized ? 'hover:bg-gray-700' : ''
+              }`}
+              onClick={isChatMinimized ? restoreChat : undefined}
+              title={isChatMinimized ? 'Click to restore chat' : 'Click to close chat'}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center">
@@ -1068,7 +1106,7 @@ export default function Home() {
                   <button
                     onClick={e => {
                       e.stopPropagation();
-                      closeChat();
+                      minimizeChat();
                     }}
                     className="text-xs opacity-75 transition-opacity hover:opacity-100"
                     title="Minimize chat"
@@ -1088,208 +1126,180 @@ export default function Home() {
                 </div>
               </div>
             </div>
-            {isSettingUsername ? (
-              <div className="flex h-full items-center justify-center p-6">
-                <div className="w-full text-center">
-                  <p className="mb-4 text-sm text-gray-600">Welcome</p>
-                  <h2 className="mb-2 text-lg font-bold text-gray-900">Let&apos;s talk!</h2>
-
-                  <form onSubmit={handleSetUsername} className="space-y-3">
-                    <div>
-                      <input
-                        type="text"
-                        id="username"
-                        value={username}
-                        onChange={e => setUsername(e.target.value)}
-                        className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                        placeholder="Enter your username"
-                        autoFocus
-                      />
-                    </div>
-                    <div>
-                      <input
-                        type="email"
-                        id="email"
-                        value={email}
-                        onChange={e => setEmail(e.target.value)}
-                        className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                        placeholder="Enter your email"
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      disabled={!username.trim() || !email.trim()}
-                      className="flex w-full cursor-pointer items-center justify-center rounded-lg border border-transparent bg-[#262525] px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <MessageSquare className="mr-2 h-4 w-4" />
-                      Start Chatting
-                    </button>
-                  </form>
-                </div>
-              </div>
-            ) : (
+            {!isChatMinimized && (
               <>
-                {/* Chat Header - Clickable to close */}
-                {/* <div
-                  className="cursor-pointer bg-[#262525] px-4 py-3 text-white transition-colors"
-                  onClick={closeChat}
-                  title="Click to close chat"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <MessageSquare className="mr-2 h-5 w-5" />
-                      <span className="text-sm font-medium">Studio Graphene</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      {renderConnectionStatus()}
-                      <button
-                        onClick={e => {
-                          e.stopPropagation();
-                          closeChat();
-                        }}
-                        className="text-xs opacity-75 transition-opacity hover:opacity-100"
-                        title="Minimize chat"
-                      >
-                        -
-                      </button>
-                      <button
-                        onClick={e => {
-                          e.stopPropagation();
-                          setIsLogoutModalOpen(true);
-                        }}
-                        className="text-xs font-bold opacity-75 transition-opacity hover:opacity-100"
-                        title="Logout"
-                      >
-                        X
-                      </button>
-                    </div>
-                  </div>
-                </div> */}
+                {isSettingUsername ? (
+                  <div className="flex h-full items-center justify-center p-6">
+                    <div className="w-full text-center">
+                      <p className="mb-4 text-sm text-gray-600">Welcome</p>
+                      <h2 className="mb-2 text-lg font-bold text-gray-900">Let&apos;s talk!</h2>
 
-                {/* Messages Area */}
-                <div className="relative flex-1 space-y-2 overflow-y-auto bg-gray-50 p-3">
-                  {error && (
-                    <div
-                      className="relative rounded border border-yellow-200 bg-yellow-50 px-2 py-1 text-xs text-yellow-700"
-                      role="alert"
-                    >
-                      <span className="block">{error}</span>
-                    </div>
-                  )}
-
-                  {successMessage && (
-                    <div className="relative rounded border border-green-200 bg-green-50 px-2 py-1 text-xs text-green-800">
-                      <span className="block">{successMessage}</span>
-                    </div>
-                  )}
-
-                  {/* Logout Modal - Inside Chat Window */}
-                  {isLogoutModalOpen && (
-                    <div className="bg-opacity-50 absolute inset-0 z-50 flex items-center justify-center bg-black">
-                      <div className="w-full max-w-xs rounded-lg bg-white p-4 shadow-lg">
-                        <h3 className="mb-3 text-sm font-bold text-gray-700">Confirm Logout</h3>
-                        <p className="mb-4 text-xs text-gray-600">
-                          Are you sure you want to log out? This will clear your message history and
-                          you&apos;ll need to enter your username again to continue.
-                        </p>
-                        <div className="flex justify-end space-x-2">
-                          <button
-                            onClick={() => setIsLogoutModalOpen(false)}
-                            className="rounded bg-gray-300 px-3 py-1 text-xs hover:bg-gray-400"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            onClick={confirmLogout}
-                            className="rounded bg-blue-500 px-3 py-1 text-xs text-white hover:bg-blue-600"
-                          >
-                            Confirm Logout
-                          </button>
+                      <form onSubmit={handleSetUsername} className="space-y-3">
+                        <div>
+                          <input
+                            type="text"
+                            id="username"
+                            value={username}
+                            onChange={e => setUsername(e.target.value)}
+                            className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                            placeholder="Enter your username"
+                            autoFocus
+                          />
                         </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {messages.map(message => {
-                    // Debug log for message rendering
-                    console.log(
-                      `🎨 RENDERING message - id: ${message.id}, from: ${message.sender}, text: "${message.text}", isFromSlack: ${message.isFromSlack}`,
-                    );
-
-                    return (
-                      <div
-                        key={message.id}
-                        className={`flex ${message.sender === username ? 'justify-end' : 'justify-start'}`}
-                      >
-                        <div
-                          className={`message-bubble max-w-xs rounded-lg px-3 py-2 text-xs shadow-sm ${
-                            message.sender === username
-                              ? 'bg-blue-600 text-white'
-                              : message.isFromSlack
-                                ? 'border border-green-200 bg-green-100 text-gray-900'
-                                : 'border border-gray-200 bg-white text-gray-900'
-                          }`}
+                        <div>
+                          <input
+                            type="email"
+                            id="email"
+                            value={email}
+                            onChange={e => setEmail(e.target.value)}
+                            className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                            placeholder="Enter your email"
+                          />
+                        </div>
+                        <button
+                          type="submit"
+                          disabled={!username.trim() || !email.trim()}
+                          className="flex w-full cursor-pointer items-center justify-center rounded-lg border border-transparent bg-[#262525] px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          <div className="mb-1 text-xs font-medium">
-                            {message.sender}
-                            {message.isFromSlack && (
-                              <span className="ml-1 rounded bg-green-200 px-1 text-xs text-green-800">
-                                Slack
-                              </span>
-                            )}
-                            <span className="ml-1 text-xs opacity-75">
-                              {formatDistanceToNow(new Date(message.timestamp), {
-                                addSuffix: true,
-                              })}
-                            </span>
-                          </div>
-                          <p className="text-xs break-words whitespace-pre-wrap">{message.text}</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <div ref={messagesEndRef} />
-                </div>
-
-                {/* Input Section */}
-                <form onSubmit={handleSendMessage} className="rounded-b-lg border-t bg-white p-3">
-                  <div className="flex space-x-2">
-                    <input
-                      ref={messageInputRef}
-                      type="text"
-                      value={newMessage}
-                      onChange={handleInputChange}
-                      placeholder="Ask anything here"
-                      className="flex-1 rounded-full border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:ring-1 focus:outline-none"
-                      disabled={isLoading}
-                      //disabled={isLoading || !isConnected}
-                    />
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={handleSendMessage}
-                        disabled={isLoading || !newMessage.trim()}
-                        //disabled={isLoading || !newMessage.trim() || !isConnected}
-                        className="rounded bg-blue-500 px-4 py-2 text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-gray-300"
-                      >
-                        {isLoading ? 'Sending...' : 'Send'}
-                      </button>
+                          <MessageSquare className="mr-2 h-4 w-4" />
+                          Start Chatting
+                        </button>
+                      </form>
                     </div>
                   </div>
-                  {slackTypingUsers.length > 0 && (
-                    <div className="mt-2 text-xs text-green-600">
-                      <span className="inline-block">
-                        <span className="typing-dot-chat">•</span>
-                        <span className="typing-dot-chat">•</span>
-                        <span className="typing-dot-chat">•</span>
-                      </span>
-                      <span className="ml-1">
-                        {slackTypingUsers.length === 1
-                          ? `${slackTypingUsers[0].name} is typing...`
-                          : `${slackTypingUsers.length} people are typing...`}
-                      </span>
+                ) : (
+                  <>
+                    {/* Messages Area */}
+                    <div className="relative flex-1 space-y-2 overflow-y-auto bg-gray-50 p-3">
+                      {error && (
+                        <div
+                          className="relative rounded border border-yellow-200 bg-yellow-50 px-2 py-1 text-xs text-yellow-700"
+                          role="alert"
+                        >
+                          <span className="block">{error}</span>
+                        </div>
+                      )}
+
+                      {successMessage && (
+                        <div className="relative rounded border border-green-200 bg-green-50 px-2 py-1 text-xs text-green-800">
+                          <span className="block">{successMessage}</span>
+                        </div>
+                      )}
+
+                      {/* Logout Modal - Inside Chat Window */}
+                      {isLogoutModalOpen && (
+                        <div className="bg-opacity-50 absolute inset-0 z-50 flex items-center justify-center bg-black">
+                          <div className="w-full max-w-xs rounded-lg bg-white p-4 shadow-lg">
+                            <h3 className="mb-3 text-sm font-bold text-gray-700">Confirm Logout</h3>
+                            <p className="mb-4 text-xs text-gray-600">
+                              Are you sure you want to log out? This will clear your message history
+                              and you&apos;ll need to enter your username again to continue.
+                            </p>
+                            <div className="flex justify-end space-x-2">
+                              <button
+                                onClick={() => setIsLogoutModalOpen(false)}
+                                className="rounded bg-gray-300 px-3 py-1 text-xs hover:bg-gray-400"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={confirmLogout}
+                                className="rounded bg-blue-500 px-3 py-1 text-xs text-white hover:bg-blue-600"
+                              >
+                                Confirm Logout
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {messages.map(message => {
+                        // Debug log for message rendering
+                        console.log(
+                          `🎨 RENDERING message - id: ${message.id}, from: ${message.sender}, text: "${message.text}", isFromSlack: ${message.isFromSlack}`,
+                        );
+
+                        return (
+                          <div
+                            key={message.id}
+                            className={`flex ${message.sender === username ? 'justify-end' : 'justify-start'}`}
+                          >
+                            <div
+                              className={`message-bubble max-w-xs rounded-lg px-3 py-2 text-xs shadow-sm ${
+                                message.sender === username
+                                  ? 'bg-blue-600 text-white'
+                                  : message.isFromSlack
+                                    ? 'border border-green-200 bg-green-100 text-gray-900'
+                                    : 'border border-gray-200 bg-white text-gray-900'
+                              }`}
+                            >
+                              <div className="mb-1 text-xs font-medium">
+                                {message.sender}
+                                {message.isFromSlack && (
+                                  <span className="ml-1 rounded bg-green-200 px-1 text-xs text-green-800">
+                                    Slack
+                                  </span>
+                                )}
+                                <span className="ml-1 text-xs opacity-75">
+                                  {formatDistanceToNow(new Date(message.timestamp), {
+                                    addSuffix: true,
+                                  })}
+                                </span>
+                              </div>
+                              <p className="text-xs break-words whitespace-pre-wrap">
+                                {message.text}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div ref={messagesEndRef} />
                     </div>
-                  )}
-                </form>
+
+                    {/* Input Section */}
+                    <form
+                      onSubmit={handleSendMessage}
+                      className="rounded-b-lg border-t bg-white p-3"
+                    >
+                      <div className="flex space-x-2">
+                        <input
+                          ref={messageInputRef}
+                          type="text"
+                          value={newMessage}
+                          onChange={handleInputChange}
+                          placeholder="Ask anything here"
+                          className="flex-1 rounded-full border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:ring-1 focus:outline-none"
+                          disabled={isLoading}
+                          //disabled={isLoading || !isConnected}
+                        />
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={handleSendMessage}
+                            disabled={isLoading || !newMessage.trim()}
+                            //disabled={isLoading || !newMessage.trim() || !isConnected}
+                            className="rounded bg-blue-500 px-4 py-2 text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-gray-300"
+                          >
+                            {isLoading ? 'Sending...' : 'Send'}
+                          </button>
+                        </div>
+                      </div>
+                      {slackTypingUsers.length > 0 && (
+                        <div className="mt-2 text-xs text-green-600">
+                          <span className="inline-block">
+                            <span className="typing-dot-chat">•</span>
+                            <span className="typing-dot-chat">•</span>
+                            <span className="typing-dot-chat">•</span>
+                          </span>
+                          <span className="ml-1">
+                            {slackTypingUsers.length === 1
+                              ? `${slackTypingUsers[0].name} is typing...`
+                              : `${slackTypingUsers.length} people are typing...`}
+                          </span>
+                        </div>
+                      )}
+                    </form>
+                  </>
+                )}
               </>
             )}
           </div>
@@ -1297,111 +1307,113 @@ export default function Home() {
       )}
 
       {/* Chat Trigger Bar - Fixed at bottom of screen with sliding animation */}
-      <div className="fixed right-0 bottom-0 left-0 z-30">
-        <div className="font-founders h-[36px] overflow-hidden bg-[#262525]">
-          <div className="sliding-questions flex h-full items-center text-[22px] font-light whitespace-nowrap">
-            {/* First set of questions */}
-            <div
-              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
-              onClick={() => handleQuestionClick('Can you tell me more about Studio Graphene?')}
-            >
-              <span className="text-[22px]">Can you tell me more about Studio Graphene?</span>
-            </div>
-            <div className="mx-4 flex items-center">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full">
-                <img src="/images/icons/blue.svg" alt="separator" className="h-4 w-4" />
+      {!isChatOpen && (
+        <div className="fixed right-0 bottom-0 left-0 z-30">
+          <div className="font-founders h-[36px] overflow-hidden bg-[#262525]">
+            <div className="sliding-questions flex h-full items-center text-[22px] font-light whitespace-nowrap">
+              {/* First set of questions */}
+              <div
+                className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
+                onClick={() => handleQuestionClick('Can you tell me more about Studio Graphene?')}
+              >
+                <span className="text-[22px]">Can you tell me more about Studio Graphene?</span>
               </div>
-            </div>
-            <div
-              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
-              onClick={() => handleQuestionClick('What AI services do you currently offer?')}
-            >
-              <span className="text-[22px]">What AI services do you currently offer?</span>
-            </div>
-            <div className="mx-4 flex items-center">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full">
-                <img src="/images/icons/green.svg" alt="separator" className="h-4 w-4" />
+              <div className="mx-4 flex items-center">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full">
+                  <img src="/images/icons/blue.svg" alt="separator" className="h-4 w-4" />
+                </div>
               </div>
-            </div>
-            <div
-              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
-              onClick={() => handleQuestionClick('What technologies do you use?')}
-            >
-              <span className="text-[22px]">What technologies do you use?</span>
-            </div>
-            <div className="mx-4 flex items-center">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full">
-                <img src="/images/icons/yellow.svg" alt="separator" className="h-4 w-4" />
+              <div
+                className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
+                onClick={() => handleQuestionClick('What AI services do you currently offer?')}
+              >
+                <span className="text-[22px]">What AI services do you currently offer?</span>
               </div>
-            </div>
+              <div className="mx-4 flex items-center">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full">
+                  <img src="/images/icons/green.svg" alt="separator" className="h-4 w-4" />
+                </div>
+              </div>
+              <div
+                className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
+                onClick={() => handleQuestionClick('What technologies do you use?')}
+              >
+                <span className="text-[22px]">What technologies do you use?</span>
+              </div>
+              <div className="mx-4 flex items-center">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full">
+                  <img src="/images/icons/yellow.svg" alt="separator" className="h-4 w-4" />
+                </div>
+              </div>
 
-            {/* Duplicate set for seamless looping */}
-            <div
-              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
-              onClick={() => handleQuestionClick('Can you tell me more about Studio Graphene?')}
-            >
-              <span className="text-[22px]">Can you tell me more about Studio Graphene?</span>
-            </div>
-            <div className="mx-4 flex items-center">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full">
-                <img src="/images/icons/pink.svg" alt="separator" className="h-4 w-4" />
+              {/* Duplicate set for seamless looping */}
+              <div
+                className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
+                onClick={() => handleQuestionClick('Can you tell me more about Studio Graphene?')}
+              >
+                <span className="text-[22px]">Can you tell me more about Studio Graphene?</span>
               </div>
-            </div>
-            <div
-              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
-              onClick={() => handleQuestionClick('What AI services do you currently offer?')}
-            >
-              <span className="text-[22px]">What AI services do you currently offer?</span>
-            </div>
-            <div className="mx-4 flex items-center">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full">
-                <img src="/images/icons/blue.svg" alt="separator" className="h-4 w-4" />
+              <div className="mx-4 flex items-center">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full">
+                  <img src="/images/icons/pink.svg" alt="separator" className="h-4 w-4" />
+                </div>
               </div>
-            </div>
-            <div
-              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
-              onClick={() => handleQuestionClick('What technologies do you use?')}
-            >
-              <span className="text-[22px]">What technologies do you use?</span>
-            </div>
-            <div className="mx-4 flex items-center">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full">
-                <img src="/images/icons/green.svg" alt="separator" className="h-4 w-4" />
+              <div
+                className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
+                onClick={() => handleQuestionClick('What AI services do you currently offer?')}
+              >
+                <span className="text-[22px]">What AI services do you currently offer?</span>
               </div>
-            </div>
+              <div className="mx-4 flex items-center">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full">
+                  <img src="/images/icons/blue.svg" alt="separator" className="h-4 w-4" />
+                </div>
+              </div>
+              <div
+                className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
+                onClick={() => handleQuestionClick('What technologies do you use?')}
+              >
+                <span className="text-[22px]">What technologies do you use?</span>
+              </div>
+              <div className="mx-4 flex items-center">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full">
+                  <img src="/images/icons/green.svg" alt="separator" className="h-4 w-4" />
+                </div>
+              </div>
 
-            {/* Third set for extra seamless looping */}
-            <div
-              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
-              onClick={() => handleQuestionClick('Can you tell me more about Studio Graphene?')}
-            >
-              <span className="text-[22px]">Can you tell me more about Studio Graphene?</span>
-            </div>
-            <div className="mx-4 flex items-center">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full">
-                <img src="/images/icons/yellow.svg" alt="separator" className="h-4 w-4" />
+              {/* Third set for extra seamless looping */}
+              <div
+                className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
+                onClick={() => handleQuestionClick('Can you tell me more about Studio Graphene?')}
+              >
+                <span className="text-[22px]">Can you tell me more about Studio Graphene?</span>
               </div>
-            </div>
-            <div
-              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
-              onClick={() => handleQuestionClick('What AI services do you currently offer?')}
-            >
-              <span className="text-[22px]">What AI services do you currently offer?</span>
-            </div>
-            <div className="mx-4 flex items-center">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full">
-                <img src="/images/icons/pink.svg" alt="separator" className="h-4 w-4" />
+              <div className="mx-4 flex items-center">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full">
+                  <img src="/images/icons/yellow.svg" alt="separator" className="h-4 w-4" />
+                </div>
               </div>
-            </div>
-            <div
-              className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
-              onClick={() => handleQuestionClick('What technologies do you use?')}
-            >
-              <span className="text-[22px]">What technologies do you use?</span>
+              <div
+                className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
+                onClick={() => handleQuestionClick('What AI services do you currently offer?')}
+              >
+                <span className="text-[22px]">What AI services do you currently offer?</span>
+              </div>
+              <div className="mx-4 flex items-center">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full">
+                  <img src="/images/icons/pink.svg" alt="separator" className="h-4 w-4" />
+                </div>
+              </div>
+              <div
+                className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
+                onClick={() => handleQuestionClick('What technologies do you use?')}
+              >
+                <span className="text-[22px]">What technologies do you use?</span>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Socket Debug Component */}
       <SocketDebug />
