@@ -2,6 +2,7 @@ export interface Message {
   id: string;
   text: string;
   sender: string;
+  email?: string;
   timestamp: string;
   isFromSlack: boolean;
   isFromApp?: boolean;

@@ -36,7 +36,13 @@ export default function Home() {
     }
     return '';
   });
-  const [isSettingUsername, setIsSettingUsername] = useState(!username);
+  const [email, setEmail] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('chat-email') || '';
+    }
+    return '';
+  });
+  const [isSettingUsername, setIsSettingUsername] = useState(!username || !email);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [localModeOnly, setLocalModeOnly] = useState(false);
@@ -106,6 +112,10 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem('chat-username', username);
   }, [username]);
+
+  useEffect(() => {
+    localStorage.setItem('chat-email', email);
+  }, [email]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -228,123 +238,24 @@ export default function Home() {
 
     // Handle Slack messages
     const onSlackMessage = (message: Message) => {
-      console.log('🎯 SLACK MESSAGE RECEIVED:', {
-        messageId: message.id,
-        sender: message.sender,
-        text: message.text,
-        channelId: message.channelId,
-        targetUser: message.targetUser,
-        currentUser: username,
-        currentUserChannel: userChannel,
-      });
-
-      // Only skip if we're confident it's our message (has our clientMessageId or slackTs)
-      const isCertainlyOurMessage =
-        (message.sender === username && message.id && sentMessageIds.has(message.id)) ||
-        (message.id && slackTimestamps.has(message.id));
-
-      if (isCertainlyOurMessage) {
-        console.log('🎯 SKIPPING - This is certainly our own message');
-        return;
-      }
-
-      // Make message filtering more permissive for Slack messages
-      const isRelevantMessage =
-        message.sender === username ||
-        (userChannel && message.channelId === userChannel) ||
-        message.targetUser === username ||
-        // Also accept messages from channels that contain chat-app-[username]
-        (message.channelId && message.channelId.includes(`chat-app-${username}`)) ||
-        // Accept all Slack messages when no channel is set (during initial setup)
-        (!userChannel && message.isFromSlack);
-
-      console.log('🎯 RELEVANCE CHECK:', {
-        isRelevantMessage,
-        reasons: {
-          senderMatch: message.sender === username,
-          channelMatch: userChannel && message.channelId === userChannel,
-          targetUserMatch: message.targetUser === username,
-          channelNameMatch: message.channelId && message.channelId.includes(`chat-app-${username}`),
-          noChannelSetAndFromSlack: !userChannel && message.isFromSlack,
-        },
-      });
-
-      if (!isRelevantMessage) {
-        console.log(`🎯 SKIPPING - Message not relevant to user ${username}:`, message.id);
-        return;
-      }
-
-      // Ensure the message is marked as from Slack
-      const slackMessage = {
-        ...message,
-        isFromSlack: true,
-      };
-
-      console.log('🎯 ADDING SLACK MESSAGE TO STATE:', slackMessage);
-
-      // Add the Slack message to our state
-      setMessages(prevMessages => {
-        console.log('🎯 CURRENT MESSAGES COUNT:', prevMessages.length);
-
-        // Check if we already have this message (prevent duplicates)
-        const isDuplicate = prevMessages.some(
-          msg =>
-            msg.id === slackMessage.id ||
-            (msg.text === slackMessage.text &&
-              msg.sender === slackMessage.sender &&
-              Math.abs(
-                new Date(msg.timestamp).getTime() - new Date(slackMessage.timestamp).getTime(),
-              ) < 5000),
-        );
-
-        if (isDuplicate) {
-          console.log('🎯 SKIPPING - Message already exists (duplicate)');
-          return prevMessages;
+      console.log('🔄 Received slack message:', message);
+      setMessages(prev => {
+        const exists = prev.some(msg => msg.id === message.id);
+        if (!exists) {
+          return [...prev, message];
         }
-
-        // If the message was very recent, show typing indicator
-        const messageTime = new Date(slackMessage.timestamp).getTime();
-        const now = Date.now();
-        if (now - messageTime < 5000 && slackMessage.userId) {
-          // Add typing indicator that will auto-remove
-          setSlackTypingUsers(prev => {
-            // Check if we already have this user typing
-            if (prev.some(u => u.id === slackMessage.userId)) {
-              return prev;
-            }
-
-            // Add new typing user
-            const typingUser = {
-              id: slackMessage.userId as string,
-              name: slackMessage.sender,
-            };
-
-            // Auto-clear after 3 seconds
-            setTimeout(() => {
-              setSlackTypingUsers(prev => prev.filter(u => u.id !== slackMessage.userId));
-            }, 3000);
-
-            return [...prev, typingUser];
-          });
-        }
-
-        // Add new message and sort
-        const newMessages = [...prevMessages, slackMessage];
-        const sortedMessages = newMessages.sort(
-          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-        );
-
-        console.log('🎯 NEW MESSAGES COUNT AFTER ADD:', sortedMessages.length);
-        return sortedMessages;
+        return prev;
       });
     };
 
     // Manually fetch Slack messages periodically to ensure we have the latest
     const fetchSlackMessages = async () => {
-      if (!username) return;
+      if (!username || !email) return;
 
       try {
-        const response = await fetch(`/api/slack-chat?username=${encodeURIComponent(username)}`);
+        const response = await fetch(
+          `/api/slack-chat?username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}`,
+        );
 
         if (!response.ok) {
           throw new Error(`Failed to fetch Slack messages: ${response.status}`);
@@ -425,10 +336,12 @@ export default function Home() {
 
     // Fetch initial data
     const fetchInitialMessages = async () => {
-      if (!username) return;
+      if (!username || !email) return;
 
       try {
-        const response = await fetch(`/api/slack-chat?username=${encodeURIComponent(username)}`);
+        const response = await fetch(
+          `/api/slack-chat?username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}`,
+        );
 
         if (!response.ok) {
           throw new Error(`Failed to fetch initial messages: ${response.status}`);
@@ -552,11 +465,13 @@ export default function Home() {
 
   // Fetch user's dedicated channel
   const fetchUserChannel = async () => {
-    if (!username) return;
+    if (!username || !email) return;
 
-    console.log('Fetching channel for user:', username);
+    console.log('Fetching channel for user:', username, 'with email:', email);
     try {
-      const response = await fetch(`/api/user-channel?username=${encodeURIComponent(username)}`);
+      const response = await fetch(
+        `/api/user-channel?username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}`,
+      );
       console.log('API response status:', response.status);
 
       if (response.ok) {
@@ -581,23 +496,23 @@ export default function Home() {
 
   // Call this when username is set and when sending a message
   useEffect(() => {
-    if (username) {
+    if (username && email) {
       fetchUserChannel();
 
       // Set up interval to periodically check for channel
       const channelCheckInterval = setInterval(fetchUserChannel, 10000);
       return () => clearInterval(channelCheckInterval);
     }
-  }, [username]);
+  }, [username, email]);
 
   // Add an effect to refetch channel after sending a message
   useEffect(() => {
-    if (messages.length > 0 && username && !userChannel) {
+    if (messages.length > 0 && username && email && !userChannel) {
       // If we have messages but no channel, try to fetch it
       console.log('Message detected but no channel, fetching channel');
       fetchUserChannel();
     }
-  }, [messages, username, userChannel]);
+  }, [messages, username, email, userChannel]);
 
   // Also fetch channel after sending a message
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -621,9 +536,20 @@ export default function Home() {
       id: messageId,
       text: messageText,
       sender: username,
+      email: email,
       timestamp: new Date().toISOString(),
       isFromSlack: false,
     };
+
+    console.log('🔥 FRONTEND: Created localMessage object:', {
+      id: localMessage.id,
+      sender: localMessage.sender,
+      email: localMessage.email,
+      text: localMessage.text.substring(0, 50) + '...',
+      hasEmail: !!localMessage.email,
+      hasUsername: !!localMessage.sender,
+      allKeys: Object.keys(localMessage),
+    });
 
     // Add message to local state immediately for better UX
     setMessages(prev => [...prev, localMessage]);
@@ -631,6 +557,8 @@ export default function Home() {
     try {
       // Try to send via socket first if we're in socket mode
       const socketSent = sendMessageViaSocket(localMessage);
+
+      console.log('🔥 FRONTEND: Socket send result:', socketSent);
 
       if (socketSent) {
         console.info('Message sent via socket');
@@ -651,6 +579,7 @@ export default function Home() {
         body: JSON.stringify({
           message: messageText,
           sender: username,
+          email: email,
           userId: 'user_' + messageId,
           clientMessageId: messageId,
         }),
@@ -691,10 +620,11 @@ export default function Home() {
     e.preventDefault();
     console.log('📝 === HANDLE SET USERNAME CALLED ===');
     console.log('📝 Username entered:', username.trim());
+    console.log('📝 Email entered:', email.trim());
     console.log('📝 Current selectedQuestion:', selectedQuestion);
     console.log('📝 Current messages length:', messages.length);
 
-    if (username.trim()) {
+    if (username.trim() && email.trim()) {
       // Set flag that we're setting username
       setIsSettingUsername(false);
       console.log('📝 Set isSettingUsername to false');
@@ -703,12 +633,13 @@ export default function Home() {
       localStorage.setItem('chat-messages', '[]');
       console.log('📝 Cleared localStorage messages');
 
-      console.log('📝 Username set, messages cleared for fresh start');
+      console.log('📝 Username and email set, messages cleared for fresh start');
 
       // If there's a selected question, send it immediately to create channel
       if (selectedQuestion) {
         console.log('🚀 PROCESSING SELECTED QUESTION:', selectedQuestion);
         console.log('🚀 Username:', username);
+        console.log('🚀 Email:', email);
         console.log('🚀 Current messages length:', messages.length);
 
         const messageId = Date.now().toString();
@@ -716,6 +647,7 @@ export default function Home() {
           id: messageId,
           text: selectedQuestion,
           sender: username,
+          email: email,
           timestamp: new Date().toISOString(),
           isFromSlack: false,
         };
@@ -762,6 +694,7 @@ export default function Home() {
               body: JSON.stringify({
                 message: selectedQuestion,
                 sender: username,
+                email: email,
                 userId: 'user_' + messageId,
                 clientMessageId: messageId,
               }),
@@ -867,7 +800,7 @@ export default function Home() {
 
     try {
       const response = await fetch(
-        `/api/user-channel?username=${encodeURIComponent(username)}&confirm=true`,
+        `/api/user-channel?username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}&confirm=true`,
         {
           method: 'DELETE',
         },
@@ -891,6 +824,7 @@ export default function Home() {
         setTimeout(() => {
           // Clear username from localStorage
           localStorage.removeItem('chat-username');
+          localStorage.removeItem('chat-email');
 
           // Clear messages from localStorage
           localStorage.removeItem('chat-messages');
@@ -903,6 +837,7 @@ export default function Home() {
 
           // Reset state
           setUsername('');
+          setEmail('');
           setMessages([]);
           setUserChannel(null);
           setUserChannelName(null);
@@ -937,6 +872,7 @@ export default function Home() {
   const confirmLogout = () => {
     // Clear username from localStorage
     localStorage.removeItem('chat-username');
+    localStorage.removeItem('chat-email');
 
     // Clear messages from localStorage
     localStorage.removeItem('chat-messages');
@@ -949,6 +885,7 @@ export default function Home() {
 
     // Reset state
     setUsername('');
+    setEmail('');
     setMessages([]);
     setUserChannel(null);
     setUserChannelName(null);
@@ -973,7 +910,7 @@ export default function Home() {
     setUserChannel(null);
     setUserChannelName(null);
     // DON'T reset selectedQuestion here - let it persist until message is sent
-  }, [username]);
+  }, [username, email]);
 
   // Focus message input when chat becomes available
   useEffect(() => {
@@ -1169,9 +1106,19 @@ export default function Home() {
                         autoFocus
                       />
                     </div>
+                    <div>
+                      <input
+                        type="email"
+                        id="email"
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        placeholder="Enter your email"
+                      />
+                    </div>
                     <button
                       type="submit"
-                      disabled={!username.trim()}
+                      disabled={!username.trim() || !email.trim()}
                       className="flex w-full cursor-pointer items-center justify-center rounded-lg border border-transparent bg-[#262525] px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <MessageSquare className="mr-2 h-4 w-4" />
@@ -1317,15 +1264,16 @@ export default function Home() {
                       disabled={isLoading}
                       //disabled={isLoading || !isConnected}
                     />
-                    <button
-                      type="submit"
-                      disabled={isLoading || !newMessage.trim()}
-                      //disabled={isLoading || !newMessage.trim() || !isConnected}
-                      className="inline-flex cursor-pointer items-center justify-center text-white transition-colors duration-200 focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-                      title="Send message"
-                    >
-                      <img src="/images/icons/arrowUp.svg" alt="Send" className="h-10 w-10" />
-                    </button>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={handleSendMessage}
+                        disabled={isLoading || !newMessage.trim()}
+                        //disabled={isLoading || !newMessage.trim() || !isConnected}
+                        className="rounded bg-blue-500 px-4 py-2 text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-gray-300"
+                      >
+                        {isLoading ? 'Sending...' : 'Send'}
+                      </button>
+                    </div>
                   </div>
                   {slackTypingUsers.length > 0 && (
                     <div className="mt-2 text-xs text-green-600">
