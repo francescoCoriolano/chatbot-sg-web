@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Send, MessageSquare } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import Image from 'next/image';
 import { Message } from '@/types';
 import {
   initializeSocket,
@@ -782,21 +783,21 @@ export default function Home() {
 
     if (socketConnected) {
       return (
-        <div className="flex items-center text-xs text-white">
+        <div className="flex items-center text-xs font-bold text-green-400">
           <div className="mr-1 h-1.5 w-1.5 rounded-full bg-green-400"></div>
           Live
         </div>
       );
     } else if (usingFallbackMode) {
       return (
-        <div className="flex items-center text-xs text-white">
+        <div className="flex items-center text-xs font-bold text-white">
           <div className="mr-1 h-1.5 w-1.5 rounded-full bg-amber-400"></div>
           Polling
         </div>
       );
     } else {
       return (
-        <div className="flex items-center text-xs text-white">
+        <div className="flex items-center text-xs font-bold text-white">
           <div className="mr-1 h-1.5 w-1.5 rounded-full bg-red-400"></div>
           Offline
         </div>
@@ -1038,7 +1039,7 @@ export default function Home() {
                 </span>
               )}
               {!isSettingUsername && (
-                <span className="ml-3 rounded-full px-2 py-1 text-xs">
+                <span className="mr-auto ml-3 rounded-full px-2 py-1 text-xs">
                   {renderConnectionStatus()}
                 </span>
               )}
@@ -1085,12 +1086,15 @@ export default function Home() {
 
       {/* Chatbot Window - Fixed position bottom right */}
       {isChatOpen && (
-        <div ref={chatWindowRef} className="fixed right-5 bottom-5 z-40">
+        <div
+          ref={chatWindowRef}
+          className={`fixed right-5 z-40 ${isChatMinimized ? 'bottom-0' : 'bottom-5'}`}
+        >
           <div
             className={`flex ${isChatMinimized ? 'h-auto' : 'h-[485px]'} w-[405px] flex-col border border-gray-200 bg-white shadow-2xl`}
           >
             <div
-              className={`cursor-pointer bg-[#262525] px-4 py-3 text-white transition-colors ${
+              className={`cursor-pointer rounded-t-[12px] bg-black px-4 py-3 text-white transition-colors ${
                 isChatMinimized ? 'hover:bg-gray-700' : ''
               }`}
               onClick={isChatMinimized ? restoreChat : undefined}
@@ -1098,20 +1102,25 @@ export default function Home() {
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center">
-                  <MessageSquare className="mr-2 h-5 w-5" />
-                  <span className="text-sm font-medium">Studio Graphene</span>
-                </div>
-                <div className="flex items-center space-x-2">
+                  <span className="mr-2 text-sm font-bold">Studio Graphene</span>{' '}
                   {renderConnectionStatus()}
+                </div>
+                <div className="flex justify-between space-x-2">
                   <button
                     onClick={e => {
                       e.stopPropagation();
                       minimizeChat();
                     }}
-                    className="text-xs opacity-75 transition-opacity hover:opacity-100"
+                    className="mt-2 text-xs opacity-75 transition-opacity hover:opacity-100"
                     title="Minimize chat"
                   >
-                    -
+                    <Image
+                      src="/images/icons/reduceIcon.svg"
+                      alt="minimize"
+                      width={16}
+                      height={16}
+                      className="h-3 w-3"
+                    />
                   </button>
                   <button
                     onClick={e => {
@@ -1121,7 +1130,13 @@ export default function Home() {
                     className="text-xs font-bold opacity-75 transition-opacity hover:opacity-100"
                     title="Logout"
                   >
-                    X
+                    <Image
+                      src="/images/icons/closeIcon.svg"
+                      alt="close"
+                      width={16}
+                      height={16}
+                      className="h-3 w-3"
+                    />
                   </button>
                 </div>
               </div>
@@ -1129,40 +1144,61 @@ export default function Home() {
             {!isChatMinimized && (
               <>
                 {isSettingUsername ? (
-                  <div className="flex h-full items-center justify-center p-6">
-                    <div className="w-full text-center">
-                      <p className="mb-4 text-sm text-gray-600">Welcome</p>
-                      <h2 className="mb-2 text-lg font-bold text-gray-900">Let&apos;s talk!</h2>
+                  <div className="flex h-full items-center justify-between rounded-b-[12px] bg-[#262525] p-6">
+                    <div className="h-full w-full text-start">
+                      <h2 className="mb-2 text-lg font-bold">Let&apos;s dive in!</h2>
+                      <p className="t mb-4 w-[266px] text-[40px] leading-[32px]">
+                        Share your details to kick things off.
+                      </p>
 
-                      <form onSubmit={handleSetUsername} className="space-y-3">
+                      <form onSubmit={handleSetUsername} className="mt-[78px] space-y-3">
                         <div>
+                          <label
+                            htmlFor="username"
+                            className="mb-2 block text-left text-[12px] font-bold"
+                          >
+                            Username
+                          </label>
                           <input
                             type="text"
                             id="username"
                             value={username}
                             onChange={e => setUsername(e.target.value)}
-                            className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                            className="block w-full rounded-lg border border-gray-300 !bg-[#262525] px-3 py-2 text-sm !text-white placeholder-[#ffffff7a] shadow-sm transition-colors focus:outline-none"
                             placeholder="Enter your username"
                             autoFocus
                           />
                         </div>
                         <div>
+                          <label
+                            htmlFor="email"
+                            className="mb-2 block text-left text-[12px] font-bold"
+                          >
+                            Email
+                          </label>
                           <input
                             type="email"
                             id="email"
                             value={email}
                             onChange={e => setEmail(e.target.value)}
-                            className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                            className="block w-full rounded-lg border border-gray-300 !bg-[#262525] px-3 py-2 text-sm !text-white placeholder-[#ffffff7a] shadow-sm transition-colors focus:outline-none"
                             placeholder="Enter your email"
                           />
                         </div>
                         <button
                           type="submit"
                           disabled={!username.trim() || !email.trim()}
-                          className="flex w-full cursor-pointer items-center justify-center rounded-lg border border-transparent bg-[#262525] px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                          className="relative flex max-h-[40px] w-full cursor-pointer items-center justify-end focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          <MessageSquare className="mr-2 h-4 w-4" />
-                          Start Chatting
+                          <div className="text-md flex items-center rounded-full bg-white px-6 py-3 font-bold text-black shadow-sm">
+                            send
+                          </div>
+                          <Image
+                            src="/images/icons/redArrowRight.svg"
+                            alt="send arrow"
+                            width={40}
+                            height={40}
+                          />
                         </button>
                       </form>
                     </div>
@@ -1170,7 +1206,7 @@ export default function Home() {
                 ) : (
                   <>
                     {/* Messages Area */}
-                    <div className="relative flex-1 space-y-2 overflow-y-auto bg-gray-50 p-3">
+                    <div className="relative flex-1 space-y-2 overflow-y-auto bg-[#262525] p-3">
                       {error && (
                         <div
                           className="relative rounded border border-yellow-200 bg-yellow-50 px-2 py-1 text-xs text-yellow-700"
@@ -1229,7 +1265,7 @@ export default function Home() {
                                 message.sender === username
                                   ? 'bg-blue-600 text-white'
                                   : message.isFromSlack
-                                    ? 'border border-green-200 bg-green-100 text-gray-900'
+                                    ? 'bg-[#454545] text-white'
                                     : 'border border-gray-200 bg-white text-gray-900'
                               }`}
                             >
@@ -1257,10 +1293,7 @@ export default function Home() {
                     </div>
 
                     {/* Input Section */}
-                    <form
-                      onSubmit={handleSendMessage}
-                      className="rounded-b-lg border-t bg-white p-3"
-                    >
+                    <form onSubmit={handleSendMessage} className="rounded-b-lg bg-[#262525] p-3">
                       <div className="flex space-x-2">
                         <input
                           ref={messageInputRef}
@@ -1268,18 +1301,31 @@ export default function Home() {
                           value={newMessage}
                           onChange={handleInputChange}
                           placeholder="Ask anything here"
-                          className="flex-1 rounded-full border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:ring-1 focus:outline-none"
+                          className="flex-1 rounded-full border border-white !bg-transparent px-3 py-2 text-sm text-white placeholder-white shadow-sm focus:ring-1 focus:outline-none"
                           disabled={isLoading}
                           //disabled={isLoading || !isConnected}
                         />
                         <div className="flex items-center space-x-2">
-                          <button
+                          {/* <button
                             onClick={handleSendMessage}
                             disabled={isLoading || !newMessage.trim()}
                             //disabled={isLoading || !newMessage.trim() || !isConnected}
                             className="rounded bg-blue-500 px-4 py-2 text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-gray-300"
                           >
                             {isLoading ? 'Sending...' : 'Send'}
+                          </button> */}
+                          <button
+                            onClick={handleSendMessage}
+                            disabled={isLoading || !newMessage.trim()}
+                            className="relative flex max-h-[40px] w-full cursor-pointer items-center justify-end focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <Image
+                              src="/images/icons/redArrowRight.svg"
+                              alt="send arrow"
+                              width={40}
+                              height={40}
+                              className="rotate-270"
+                            />
                           </button>
                         </div>
                       </div>
