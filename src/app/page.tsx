@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Send, MessageSquare } from 'lucide-react';
+import { Send, MessageSquare, X } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import Image from 'next/image';
 import { Message } from '@/types';
@@ -781,14 +781,14 @@ export default function Home() {
   const renderConnectionStatus = () => {
     const socketConnected = isSocketConnected();
 
-    if (socketConnected) {
+    if (socketConnected && username && !isChatMinimized) {
       return (
         <div className="flex items-center text-xs font-bold text-green-400">
           <div className="mr-1 h-1.5 w-1.5 rounded-full bg-green-400"></div>
           Live
         </div>
       );
-    } else if (usingFallbackMode) {
+    } else if (usingFallbackMode && !isChatMinimized) {
       return (
         <div className="flex items-center text-xs font-bold text-white">
           <div className="mr-1 h-1.5 w-1.5 rounded-full bg-amber-400"></div>
@@ -798,8 +798,8 @@ export default function Home() {
     } else {
       return (
         <div className="flex items-center text-xs font-bold text-white">
-          <div className="mr-1 h-1.5 w-1.5 rounded-full bg-red-400"></div>
-          Offline
+          {/* <div className="mr-1 h-1.5 w-1.5 rounded-full bg-red-400"></div>
+          Offline */}
         </div>
       );
     }
@@ -1054,7 +1054,7 @@ export default function Home() {
                 {userChannel ? (
                   <button
                     onClick={() => setIsModalOpen(true)}
-                    className="flex items-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-md transition-colors hover:bg-red-700 focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:outline-none"
+                    className="flex cursor-pointer items-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-md transition-colors hover:bg-red-700 focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:outline-none"
                   >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
@@ -1094,10 +1094,7 @@ export default function Home() {
             className={`flex ${isChatMinimized ? 'h-auto' : 'h-[485px]'} w-[405px] flex-col border border-gray-200 bg-white shadow-2xl`}
           >
             <div
-              className={`cursor-pointer rounded-t-[12px] bg-black px-4 py-3 text-white transition-colors ${
-                isChatMinimized ? 'hover:bg-gray-700' : ''
-              }`}
-              onClick={isChatMinimized ? restoreChat : undefined}
+              className="h-[42px] cursor-pointer rounded-t-[12px] bg-black px-4 py-3 text-white transition-colors"
               title={isChatMinimized ? 'Click to restore chat' : 'Click to close chat'}
             >
               <div className="flex items-center justify-between">
@@ -1109,17 +1106,21 @@ export default function Home() {
                   <button
                     onClick={e => {
                       e.stopPropagation();
-                      minimizeChat();
+                      isChatMinimized ? restoreChat() : minimizeChat();
                     }}
-                    className="mt-2 text-xs opacity-75 transition-opacity hover:opacity-100"
-                    title="Minimize chat"
+                    className={`cursor-pointer text-xs opacity-75 transition-opacity hover:opacity-100 ${!isChatMinimized ? 'mt-2' : ''}`}
+                    title={isChatMinimized ? 'Expand chat' : 'Minimize chat'}
                   >
                     <Image
-                      src="/images/icons/reduceIcon.svg"
-                      alt="minimize"
+                      src={
+                        isChatMinimized
+                          ? '/images/icons/explandChatIconArrow.svg'
+                          : '/images/icons/reduceIcon.svg'
+                      }
+                      alt={isChatMinimized ? 'expand' : 'minimize'}
                       width={16}
                       height={16}
-                      className="h-3 w-3"
+                      className="h-3.5 w-3.5"
                     />
                   </button>
                   <button
@@ -1127,7 +1128,7 @@ export default function Home() {
                       e.stopPropagation();
                       setIsLogoutModalOpen(true);
                     }}
-                    className="text-xs font-bold opacity-75 transition-opacity hover:opacity-100"
+                    className="cursor-pointer text-xs font-bold opacity-75 transition-opacity hover:opacity-100"
                     title="Logout"
                   >
                     <Image
@@ -1135,7 +1136,7 @@ export default function Home() {
                       alt="close"
                       width={16}
                       height={16}
-                      className="h-3 w-3"
+                      className="h-3.5 w-3.5"
                     />
                   </button>
                 </div>
@@ -1190,7 +1191,7 @@ export default function Home() {
                           disabled={!username.trim() || !email.trim()}
                           className="relative flex max-h-[40px] w-full cursor-pointer items-center justify-end focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          <div className="text-md flex items-center rounded-full bg-white px-6 py-3 font-bold text-black shadow-sm">
+                          <div className="text-md flex h-[40px] items-center rounded-full bg-white px-6 py-3 font-bold text-black shadow-sm">
                             send
                           </div>
                           <Image
@@ -1224,26 +1225,36 @@ export default function Home() {
 
                       {/* Logout Modal - Inside Chat Window */}
                       {isLogoutModalOpen && (
-                        <div className="bg-opacity-50 absolute inset-0 z-50 flex items-center justify-center bg-black">
-                          <div className="w-full max-w-xs rounded-lg bg-white p-4 shadow-lg">
-                            <h3 className="mb-3 text-sm font-bold text-gray-700">Confirm Logout</h3>
-                            <p className="mb-4 text-xs text-gray-600">
-                              Are you sure you want to log out? This will clear your message history
-                              and you&apos;ll need to enter your username again to continue.
-                            </p>
-                            <div className="flex justify-end space-x-2">
-                              <button
-                                onClick={() => setIsLogoutModalOpen(false)}
-                                className="rounded bg-gray-300 px-3 py-1 text-xs hover:bg-gray-400"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                onClick={confirmLogout}
-                                className="rounded bg-blue-500 px-3 py-1 text-xs text-white hover:bg-blue-600"
-                              >
-                                Confirm Logout
-                              </button>
+                        <div className="absolute inset-0 z-50 flex items-center justify-center bg-[#05050599]">
+                          <div className="relative flex h-[260px] w-[310px] flex-col rounded-lg bg-white p-5 shadow-lg">
+                            <button
+                              onClick={() => setIsLogoutModalOpen(false)}
+                              className="absolute top-2 right-2 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full text-gray-500"
+                            >
+                              <Image
+                                src="/images/icons/closeIconBlack.svg"
+                                alt="close"
+                                width={16}
+                                height={16}
+                                className="h-3.5 w-3.5"
+                              />
+                            </button>
+                            <div className="mt-auto flex flex-col justify-between">
+                              <h3 className="mt-6 mb-3 text-[36px] leading-[32px] !font-[200] tracking-[0] text-gray-700">
+                                Do you want to close the chat?
+                              </h3>
+                              <p className="mr-4 mb-4 text-xs text-gray-600">
+                                If you leave now any messages exchanged during your absence will be
+                                lost when you come back to the chat.
+                              </p>
+                              <div className="mt-[15px] flex space-x-2">
+                                <button
+                                  onClick={confirmLogout}
+                                  className="h-[40px] w-full cursor-pointer rounded-full bg-black px-3 py-1 text-[20px] font-bold text-white"
+                                >
+                                  close chat
+                                </button>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -1260,22 +1271,33 @@ export default function Home() {
                             key={message.id}
                             className={`flex ${message.sender === username ? 'justify-end' : 'justify-start'}`}
                           >
+                            {message.sender !== username && (
+                              <div className="flex-shrink-0">
+                                <Image
+                                  src="/images/sgLogo.svg"
+                                  alt="Studio Graphene Logo"
+                                  width={32}
+                                  height={32}
+                                  className="h-8 w-8"
+                                />
+                              </div>
+                            )}
                             <div
-                              className={`message-bubble max-w-xs rounded-lg px-3 py-2 text-xs shadow-sm ${
+                              className={`message-bubble max-w-xs px-3 py-2 text-xs shadow-sm ${
                                 message.sender === username
-                                  ? 'bg-blue-600 text-white'
+                                  ? 'rounded-tl-[20px] rounded-tr-[2px] rounded-br-[20px] rounded-bl-[20px] bg-blue-600 text-white'
                                   : message.isFromSlack
-                                    ? 'bg-[#454545] text-white'
-                                    : 'border border-gray-200 bg-white text-gray-900'
+                                    ? 'rounded-tl-[2px] rounded-tr-[20px] rounded-br-[20px] rounded-bl-[20px] bg-[#454545] text-white'
+                                    : 'rounded-tl-[2px] rounded-tr-[20px] rounded-br-[20px] rounded-bl-[20px] border border-gray-200 bg-white text-gray-900'
                               }`}
                             >
                               <div className="mb-1 text-xs font-medium">
-                                {message.sender}
-                                {message.isFromSlack && (
+                                {/* {message.sender} */}
+                                {/* {message.isFromSlack && (
                                   <span className="ml-1 rounded bg-green-200 px-1 text-xs text-green-800">
                                     Slack
                                   </span>
-                                )}
+                                )} */}
                                 <span className="ml-1 text-xs opacity-75">
                                   {formatDistanceToNow(new Date(message.timestamp), {
                                     addSuffix: true,
@@ -1293,7 +1315,10 @@ export default function Home() {
                     </div>
 
                     {/* Input Section */}
-                    <form onSubmit={handleSendMessage} className="rounded-b-lg bg-[#262525] p-3">
+                    <form
+                      onSubmit={handleSendMessage}
+                      className="rounded-b-lg bg-[#262525] p-5 pb-6"
+                    >
                       <div className="flex space-x-2">
                         <input
                           ref={messageInputRef}
@@ -1301,7 +1326,7 @@ export default function Home() {
                           value={newMessage}
                           onChange={handleInputChange}
                           placeholder="Ask anything here"
-                          className="flex-1 rounded-full border border-white !bg-transparent px-3 py-2 text-sm text-white placeholder-white shadow-sm focus:ring-1 focus:outline-none"
+                          className="flex-1 rounded-full border border-white !bg-transparent px-3 py-2 text-sm !text-white placeholder-white shadow-sm focus:ring-1 focus:outline-none"
                           disabled={isLoading}
                           //disabled={isLoading || !isConnected}
                         />
@@ -1466,7 +1491,7 @@ export default function Home() {
 
       {/* Delete Channel Modal */}
       {isModalOpen && (
-        <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-[#262525]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#05050599]">
           <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
             <h3 className="mb-4 text-lg font-bold text-red-600">Delete Channel Confirmation</h3>
             <p className="mb-4">
