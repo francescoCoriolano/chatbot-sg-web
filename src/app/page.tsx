@@ -1382,7 +1382,7 @@ export default function Home() {
                                     Slack
                                   </span>
                                 )} */}
-                                <span className="ml-1 text-xs opacity-75">
+                                <span className="text-xs opacity-75">
                                   {formatDistanceToNow(new Date(message.timestamp), {
                                     addSuffix: true,
                                   })}
@@ -1410,7 +1410,7 @@ export default function Home() {
                           value={newMessage}
                           onChange={handleInputChange}
                           placeholder="Ask anything here"
-                          className="flex-1 rounded-full border border-white !bg-transparent px-3 py-2 text-sm !text-white placeholder-white shadow-sm focus:ring-1 focus:outline-none"
+                          className="mr-0 flex-1 rounded-full border border-white !bg-transparent px-3 py-2 text-sm !text-white placeholder-white shadow-sm focus:ring-1 focus:outline-none"
                           disabled={isLoading}
                           //disabled={isLoading || !isConnected}
                         />
