@@ -78,6 +78,10 @@ export default function Home() {
   });
   // Add state for chat minimize functionality
   const [isChatMinimized, setIsChatMinimized] = useState(false);
+  // Add state for unread messages count
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
+  // Track which messages have already been counted for unread notifications
+  const [countedUnreadMessages] = useState<Set<string>>(new Set());
 
   // Add state for selected question
   const [selectedQuestion, setSelectedQuestion] = useState<string | null>(null);
@@ -86,6 +90,18 @@ export default function Home() {
   const mounted = useRef(true);
   // Reference for chat window to detect outside clicks
   const chatWindowRef = useRef<HTMLDivElement>(null);
+  // Refs to access current state values in event handlers without causing re-runs
+  const isChatMinimizedRef = useRef(isChatMinimized);
+  const userChannelRef = useRef(userChannel);
+
+  // Update refs when state changes
+  useEffect(() => {
+    isChatMinimizedRef.current = isChatMinimized;
+  }, [isChatMinimized]);
+
+  useEffect(() => {
+    userChannelRef.current = userChannel;
+  }, [userChannel]);
 
   // Add a state to track the fallback mode
   const [usingFallbackMode, setUsingFallbackMode] = useState(false);
@@ -220,7 +236,7 @@ export default function Home() {
       // Check if this message is from this user or relevant to this user
       const isRelevantMessage =
         message.sender === username ||
-        (userChannel && message.channelId === userChannel) ||
+        (userChannelRef.current && message.channelId === userChannelRef.current) ||
         message.targetUser === username;
 
       if (!isRelevantMessage && message.sender !== username) {
@@ -243,6 +259,23 @@ export default function Home() {
 
         if (isDuplicate) return prevMessages;
 
+        // Increment unread count if chat is minimized and message is not from current user
+        if (
+          isChatMinimizedRef.current &&
+          message.sender !== username &&
+          !countedUnreadMessages.has(message.id)
+        ) {
+          console.log(
+            `📢 Incrementing unread count for message from ${message.sender}, chat minimized: ${isChatMinimizedRef.current}`,
+          );
+          countedUnreadMessages.add(message.id);
+          setUnreadMessagesCount(prev => {
+            const newCount = prev + 1;
+            console.log(`📢 Unread count: ${prev} -> ${newCount}`);
+            return newCount;
+          });
+        }
+
         // Add new message and sort
         const newMessages = [...prevMessages, message];
         return newMessages.sort(
@@ -257,6 +290,22 @@ export default function Home() {
       setMessages(prev => {
         const exists = prev.some(msg => msg.id === message.id);
         if (!exists) {
+          // Increment unread count if chat is minimized and message is not from current user
+          if (
+            isChatMinimizedRef.current &&
+            message.sender !== username &&
+            !countedUnreadMessages.has(message.id)
+          ) {
+            console.log(
+              `📢 [Slack] Incrementing unread count for message from ${message.sender}, chat minimized: ${isChatMinimizedRef.current}`,
+            );
+            countedUnreadMessages.add(message.id);
+            setUnreadMessagesCount(prevCount => {
+              const newCount = prevCount + 1;
+              console.log(`📢 [Slack] Unread count: ${prevCount} -> ${newCount}`);
+              return newCount;
+            });
+          }
           return [...prev, message];
         }
         return prev;
@@ -286,6 +335,7 @@ export default function Home() {
           const existingIds = new Set(prevMessages.map(msg => msg.id));
           const newMessages = [...prevMessages];
           let hasNewMessages = false;
+          let newUnreadCount = 0;
 
           slackMessages.forEach((msg: Message) => {
             // Only skip messages we're certain we sent ourselves
@@ -303,6 +353,16 @@ export default function Home() {
               return;
             }
 
+            // Count new messages from others for unread notification
+            if (
+              isChatMinimizedRef.current &&
+              msg.sender !== username &&
+              !countedUnreadMessages.has(msg.id)
+            ) {
+              countedUnreadMessages.add(msg.id);
+              newUnreadCount++;
+            }
+
             // Ensure all Slack messages have isFromSlack flag
             const messageWithFlag = {
               ...msg,
@@ -312,6 +372,11 @@ export default function Home() {
             hasNewMessages = true;
             console.log('Added missing Slack message from API:', messageWithFlag);
           });
+
+          // Update unread count if there are new messages and chat is minimized
+          if (newUnreadCount > 0) {
+            setUnreadMessagesCount(prev => prev + newUnreadCount);
+          }
 
           if (!hasNewMessages) {
             return prevMessages;
@@ -469,7 +534,7 @@ export default function Home() {
       // Track component unmount
       mounted.current = false;
     };
-  }, [username]);
+  }, [username, email]);
 
   // Clean up socket on component unmount
   useEffect(() => {
@@ -909,6 +974,8 @@ export default function Home() {
     setHasStartedChatting(false);
     setIsChatOpen(false);
     setIsChatMinimized(false);
+    setUnreadMessagesCount(0);
+    countedUnreadMessages.clear(); // Clear tracked message IDs
     sentMessageIds.clear();
     slackTimestamps.clear();
     setSuccessMessage('');
@@ -939,6 +1006,13 @@ export default function Home() {
       }, 100);
     }
   }, [isSettingUsername]);
+
+  // Debug notification widget
+  useEffect(() => {
+    console.log(
+      `📢 Notification widget check: isChatMinimized=${isChatMinimized}, unreadMessagesCount=${unreadMessagesCount}, should show=${isChatMinimized && unreadMessagesCount > 0}`,
+    );
+  }, [isChatMinimized, unreadMessagesCount]);
 
   // Debug message state changes
   useEffect(() => {
@@ -978,6 +1052,8 @@ export default function Home() {
     // Reset minimized state when opening chat
     if (!isChatOpen) {
       setIsChatMinimized(false);
+      setUnreadMessagesCount(0); // Reset unread messages when opening chat
+      countedUnreadMessages.clear(); // Clear tracked message IDs
     }
 
     // Focus message input when opening chat (if not setting username)
@@ -1001,7 +1077,10 @@ export default function Home() {
 
   // Restore chat window from minimized state
   const restoreChat = () => {
+    console.log(`📢 Restoring chat, resetting unread count from ${unreadMessagesCount} to 0`);
     setIsChatMinimized(false);
+    setUnreadMessagesCount(0); // Reset unread messages when chat is opened
+    countedUnreadMessages.clear(); // Clear tracked message IDs
   };
 
   const handleQuestionClick = (question: string) => {
@@ -1099,7 +1178,12 @@ export default function Home() {
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center">
-                  <span className="mr-2 text-sm font-bold">Studio Graphene</span>{' '}
+                  <span className="mr-2 text-sm font-bold">Studio Graphene</span>
+                  {isChatMinimized && unreadMessagesCount > 0 && (
+                    <div className="mr-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">
+                      {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}
+                    </div>
+                  )}
                   {renderConnectionStatus()}
                 </div>
                 <div className="flex justify-between space-x-2">
@@ -1391,7 +1475,13 @@ export default function Home() {
               </div>
               <div className="mx-4 flex items-center">
                 <div className="flex h-6 w-6 items-center justify-center rounded-full">
-                  <img src="/images/icons/blue.svg" alt="separator" className="h-4 w-4" />
+                  <Image
+                    src="/images/icons/blue.svg"
+                    alt="separator"
+                    className="h-4 w-4"
+                    width={16}
+                    height={16}
+                  />
                 </div>
               </div>
               <div
@@ -1402,7 +1492,13 @@ export default function Home() {
               </div>
               <div className="mx-4 flex items-center">
                 <div className="flex h-6 w-6 items-center justify-center rounded-full">
-                  <img src="/images/icons/green.svg" alt="separator" className="h-4 w-4" />
+                  <Image
+                    src="/images/icons/green.svg"
+                    alt="separator"
+                    className="h-4 w-4"
+                    width={16}
+                    height={16}
+                  />
                 </div>
               </div>
               <div
@@ -1413,7 +1509,13 @@ export default function Home() {
               </div>
               <div className="mx-4 flex items-center">
                 <div className="flex h-6 w-6 items-center justify-center rounded-full">
-                  <img src="/images/icons/yellow.svg" alt="separator" className="h-4 w-4" />
+                  <Image
+                    src="/images/icons/yellow.svg"
+                    alt="separator"
+                    className="h-4 w-4"
+                    width={16}
+                    height={16}
+                  />
                 </div>
               </div>
 
@@ -1426,7 +1528,13 @@ export default function Home() {
               </div>
               <div className="mx-4 flex items-center">
                 <div className="flex h-6 w-6 items-center justify-center rounded-full">
-                  <img src="/images/icons/pink.svg" alt="separator" className="h-4 w-4" />
+                  <Image
+                    src="/images/icons/pink.svg"
+                    alt="separator"
+                    className="h-4 w-4"
+                    width={16}
+                    height={16}
+                  />
                 </div>
               </div>
               <div
@@ -1437,7 +1545,13 @@ export default function Home() {
               </div>
               <div className="mx-4 flex items-center">
                 <div className="flex h-6 w-6 items-center justify-center rounded-full">
-                  <img src="/images/icons/blue.svg" alt="separator" className="h-4 w-4" />
+                  <Image
+                    src="/images/icons/blue.svg"
+                    alt="separator"
+                    className="h-4 w-4"
+                    width={16}
+                    height={16}
+                  />
                 </div>
               </div>
               <div
@@ -1448,7 +1562,13 @@ export default function Home() {
               </div>
               <div className="mx-4 flex items-center">
                 <div className="flex h-6 w-6 items-center justify-center rounded-full">
-                  <img src="/images/icons/green.svg" alt="separator" className="h-4 w-4" />
+                  <Image
+                    src="/images/icons/green.svg"
+                    alt="separator"
+                    className="h-4 w-4"
+                    width={16}
+                    height={16}
+                  />
                 </div>
               </div>
 
@@ -1461,7 +1581,13 @@ export default function Home() {
               </div>
               <div className="mx-4 flex items-center">
                 <div className="flex h-6 w-6 items-center justify-center rounded-full">
-                  <img src="/images/icons/yellow.svg" alt="separator" className="h-4 w-4" />
+                  <Image
+                    src="/images/icons/yellow.svg"
+                    alt="separator"
+                    className="h-4 w-4"
+                    width={16}
+                    height={16}
+                  />
                 </div>
               </div>
               <div
@@ -1472,7 +1598,13 @@ export default function Home() {
               </div>
               <div className="mx-4 flex items-center">
                 <div className="flex h-6 w-6 items-center justify-center rounded-full">
-                  <img src="/images/icons/pink.svg" alt="separator" className="h-4 w-4" />
+                  <Image
+                    src="/images/icons/pink.svg"
+                    alt="separator"
+                    className="h-4 w-4"
+                    width={16}
+                    height={16}
+                  />
                 </div>
               </div>
               <div
