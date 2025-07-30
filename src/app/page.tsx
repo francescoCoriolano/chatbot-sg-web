@@ -2,19 +2,20 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Send, MessageSquare, X } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
 import Image from 'next/image';
 import { Message } from '@/types';
-import {
-  initializeSocket,
-  disconnectSocket,
-  getSocket,
-  isSocketConnected,
-  isUsingSocketMode,
-  sendMessageViaSocket,
-} from '@/utils/socket';
+import { disconnectSocket, isSocketConnected } from '@/utils/socket';
 import { Socket } from 'socket.io-client';
 import SocketDebug from '@/components/SocketDebug';
+
+// Imported components
+import { AppHeader } from '@/components/AppHeader';
+import { QuestionBar } from '@/components/QuestionBar';
+import { DeleteChannelModal } from '@/components/modals/DeleteChannelModal';
+import { ChatWindow } from '@/components/chat/ChatWindow';
+
+// Import the useSocket hook
+import { useSocket } from '@/hooks/useSocket';
 
 interface TypingUser {
   id: string;
@@ -45,13 +46,11 @@ export default function Home() {
   });
   const [isSettingUsername, setIsSettingUsername] = useState(!username || !email);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [localModeOnly, setLocalModeOnly] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
   const [slackTypingUsers, setSlackTypingUsers] = useState<TypingUser[]>([]);
-  const socketRef = useRef<Socket | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
+
   // Track message IDs sent by this client to prevent duplicates from Slack polling
   const [sentMessageIds] = useState<Set<string>>(new Set());
   // Track Slack timestamps for messages we've sent
@@ -61,7 +60,6 @@ export default function Home() {
   const [userChannelName, setUserChannelName] = useState<string | null>(null);
   // Add state for channel deletion
   const [isDeletingChannel, setIsDeletingChannel] = useState<boolean>(false);
-  const [deleteConfirmation, setDeleteConfirmation] = useState<string>('');
   const [successMessage, setSuccessMessage] = useState<string>('');
   // Add state for modal visibility
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
@@ -94,6 +92,21 @@ export default function Home() {
   const isChatMinimizedRef = useRef(isChatMinimized);
   const userChannelRef = useRef(userChannel);
 
+  // Use the socket hook
+  const {
+    isConnected,
+    usingFallbackMode,
+    error: socketError,
+    sendMessage: sendSocketMessage,
+    onChatMessage,
+    onSlackMessage,
+  } = useSocket(username, email);
+
+  // Combine socket error with local error
+  const [localError, setLocalError] = useState<string | null>(null);
+  const error = socketError || localError;
+  const setError = setLocalError;
+
   // Update refs when state changes
   useEffect(() => {
     isChatMinimizedRef.current = isChatMinimized;
@@ -103,136 +116,10 @@ export default function Home() {
     userChannelRef.current = userChannel;
   }, [userChannel]);
 
-  // Add a state to track the fallback mode
-  const [usingFallbackMode, setUsingFallbackMode] = useState(false);
-
-  // Check localStorage at startup
+  // Setup message handlers for the socket hook
   useEffect(() => {
-    // If no username, don't load messages
-    if (!username) {
-      console.log('No username set, not loading messages');
-      return;
-    }
-
-    // Log the initial localStorage state
-    const savedMessages = localStorage.getItem('chat-messages');
-    console.log(
-      'Initial localStorage state:',
-      savedMessages ? `${savedMessages.length} chars` : 'empty',
-    );
-
-    // Clear messages if username just changed
-    setMessages([]);
-
-    // Store empty messages to localStorage
-    localStorage.setItem('chat-messages', '[]');
-
-    console.log('Starting with fresh message state for user:', username);
-  }, [username]);
-
-  useEffect(() => {
-    console.log('Syncing messages to localStorage:', messages.length, 'messages');
-    localStorage.setItem('chat-messages', JSON.stringify(messages));
-  }, [messages]);
-
-  useEffect(() => {
-    localStorage.setItem('chat-username', username);
-  }, [username]);
-
-  useEffect(() => {
-    localStorage.setItem('chat-email', email);
-  }, [email]);
-
-  // Sync hasStartedChatting state with localStorage
-  useEffect(() => {
-    localStorage.setItem('has-started-chatting', hasStartedChatting.toString());
-  }, [hasStartedChatting]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  // Setup Socket.IO connection
-  useEffect(() => {
-    // Don't establish connection until username is set
-    if (!username) return;
-
-    // Make sure the socketio API is initialized
-    const ensureSocketServer = async () => {
-      try {
-        // Use the App Router endpoint to initialize the socket
-        console.log('Initializing Socket.IO server...');
-        const initResponse = await fetch('/api/socket-init');
-        const initData = await initResponse.json();
-
-        if (initData.success) {
-          console.log('Socket server initialized:', initData.status);
-        } else {
-          console.error('Failed to initialize socket server:', initData.error);
-          setError('Failed to connect to chat server. Please refresh the page.');
-        }
-      } catch (error) {
-        console.error('Error initializing socket server:', error);
-        setError('Failed to connect to chat server. Please refresh the page.');
-      }
-    };
-
-    // Check and initialize the socket server if needed
-    ensureSocketServer();
-
-    // Initialize Socket.IO
-    const socket = initializeSocket();
-    socketRef.current = socket;
-
-    if (!socket) {
-      setError('Failed to connect to chat server. Please refresh the page.');
-      return;
-    }
-
-    // Connection events
-    const onConnect = () => {
-      setIsConnected(true);
-      setError(null);
-    };
-
-    const onDisconnect = (reason: string) => {
-      setIsConnected(false);
-
-      if (reason === 'io server disconnect') {
-        // Server initiated disconnect - need to reconnect manually
-        socket.connect();
-      }
-    };
-
-    const onConnectError = (err: Error) => {
-      setError(`Connection error: ${err.message}. Retrying...`);
-    };
-
-    // Handle welcome message
-    const onWelcome = (data: any) => {
-      setIsConnected(true);
-    };
-
-    // Handle reconnect events
-    const onReconnect = (attemptNumber: number) => {
-      setIsConnected(true);
-      setError(null);
-    };
-
-    const onReconnectAttempt = (attemptNumber: number) => {
-      setError(`Connection lost. Reconnecting (attempt ${attemptNumber})...`);
-    };
-
-    const onReconnectError = (err: Error) => {
-      setError(`Reconnection error: ${err.message}`);
-    };
-
-    const onReconnectFailed = () => {
-      setError('Failed to reconnect after multiple attempts. Please refresh the page.');
-    };
-
     // Handle new messages from the server
-    const onChatMessage = (message: Message) => {
+    onChatMessage((message: Message) => {
       // Check if this message is from this user or relevant to this user
       const isRelevantMessage =
         message.sender === username ||
@@ -282,10 +169,10 @@ export default function Home() {
           (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
         );
       });
-    };
+    });
 
     // Handle Slack messages
-    const onSlackMessage = (message: Message) => {
+    onSlackMessage((message: Message) => {
       console.log('🔄 Received slack message:', message);
       setMessages(prev => {
         const exists = prev.some(msg => msg.id === message.id);
@@ -310,7 +197,82 @@ export default function Home() {
         }
         return prev;
       });
+    });
+  }, [username, onChatMessage, onSlackMessage]);
+
+  // Check localStorage at startup
+  useEffect(() => {
+    // If no username, don't load messages
+    if (!username) {
+      console.log('No username set, not loading messages');
+      return;
+    }
+
+    // Log the initial localStorage state
+    const savedMessages = localStorage.getItem('chat-messages');
+    console.log(
+      'Initial localStorage state:',
+      savedMessages ? `${savedMessages.length} chars` : 'empty',
+    );
+
+    // Clear messages if username just changed
+    setMessages([]);
+
+    // Store empty messages to localStorage
+    localStorage.setItem('chat-messages', '[]');
+
+    console.log('Starting with fresh message state for user:', username);
+  }, [username]);
+
+  useEffect(() => {
+    console.log('Syncing messages to localStorage:', messages.length, 'messages');
+    localStorage.setItem('chat-messages', JSON.stringify(messages));
+  }, [messages]);
+
+  useEffect(() => {
+    localStorage.setItem('chat-username', username);
+  }, [username]);
+
+  useEffect(() => {
+    localStorage.setItem('chat-email', email);
+  }, [email]);
+
+  // Sync hasStartedChatting state with localStorage
+  useEffect(() => {
+    localStorage.setItem('has-started-chatting', hasStartedChatting.toString());
+  }, [hasStartedChatting]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Setup message fetching and polling (socket connection is handled by useSocket hook)
+  useEffect(() => {
+    // Don't establish connection until username is set
+    if (!username) return;
+
+    // Make sure the socketio API is initialized
+    const ensureSocketServer = async () => {
+      try {
+        // Use the App Router endpoint to initialize the socket
+        console.log('Initializing Socket.IO server...');
+        const initResponse = await fetch('/api/socket-init');
+        const initData = await initResponse.json();
+
+        if (initData.success) {
+          console.log('Socket server initialized:', initData.status);
+        } else {
+          console.error('Failed to initialize socket server:', initData.error);
+          setError('Failed to connect to chat server. Please refresh the page.');
+        }
+      } catch (error) {
+        console.error('Error initializing socket server:', error);
+        setError('Failed to connect to chat server. Please refresh the page.');
+      }
     };
+
+    // Check and initialize the socket server if needed
+    ensureSocketServer();
 
     // Manually fetch Slack messages periodically to ensure we have the latest
     const fetchSlackMessages = async () => {
@@ -391,26 +353,6 @@ export default function Home() {
       }
     };
 
-    // Register all event handlers
-    socket.on('connect', onConnect);
-    socket.on('disconnect', onDisconnect);
-    socket.on('connect_error', onConnectError);
-    socket.on('welcome', onWelcome);
-    socket.io.on('reconnect', onReconnect);
-    socket.io.on('reconnect_attempt', onReconnectAttempt);
-    socket.io.on('reconnect_error', onReconnectError);
-    socket.io.on('reconnect_failed', onReconnectFailed);
-    socket.on('chat_message', onChatMessage);
-    socket.on('slack_message', onSlackMessage);
-    socket.on('missed_messages_complete', (data: any) => {
-      // Messages have been loaded
-    });
-
-    // When connected, double check for existing Slack messages
-    socket.on('connect', () => {
-      setTimeout(fetchSlackMessages, 1000);
-    });
-
     // Set up periodic polling for Slack messages as a fallback
     const pollInterval = setInterval(fetchSlackMessages, 15000); // Poll every 15 seconds
 
@@ -463,24 +405,6 @@ export default function Home() {
 
     fetchInitialMessages();
 
-    // Check if we're in socket mode or fallback mode
-    const checkConnectionMode = () => {
-      const usingSocket = isUsingSocketMode();
-      setUsingFallbackMode(!usingSocket);
-    };
-
-    // Check initially and on reconnection attempts
-    checkConnectionMode();
-    socket.on('connect', () => {
-      onConnect();
-      checkConnectionMode();
-    });
-
-    socket.on('disconnect', reason => {
-      onDisconnect(reason);
-      checkConnectionMode();
-    });
-
     // Listen for messages from the API polling fallback
     const handleApiMessages = (event: CustomEvent) => {
       if (!event.detail || !event.detail.messages) return;
@@ -516,15 +440,6 @@ export default function Home() {
     window.addEventListener('api_messages', handleApiMessages as EventListener);
 
     return () => {
-      // Cleanup by removing all event listeners
-      socket.off('connect', onConnect);
-      socket.off('disconnect', onDisconnect);
-      socket.off('connect_error', onConnectError);
-      socket.off('welcome', onWelcome);
-      socket.off('chat_message', onChatMessage);
-      socket.off('slack_message', onSlackMessage);
-      socket.off('missed_messages_complete');
-
       // Clear polling interval
       clearInterval(pollInterval);
 
@@ -636,7 +551,7 @@ export default function Home() {
 
     try {
       // Try to send via socket first if we're in socket mode
-      const socketSent = sendMessageViaSocket(localMessage);
+      const socketSent = sendSocketMessage(localMessage);
 
       console.log('🔥 FRONTEND: Socket send result:', socketSent);
 
@@ -696,15 +611,17 @@ export default function Home() {
     }
   };
 
-  const handleSetUsername = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSetUsername = (username: string, email: string) => {
     console.log('📝 === HANDLE SET USERNAME CALLED ===');
-    console.log('📝 Username entered:', username.trim());
-    console.log('📝 Email entered:', email.trim());
+    console.log('📝 Username entered:', username);
+    console.log('📝 Email entered:', email);
     console.log('📝 Current selectedQuestion:', selectedQuestion);
     console.log('📝 Current messages length:', messages.length);
 
     if (username.trim() && email.trim()) {
+      // Update state
+      setUsername(username);
+      setEmail(email);
       // Set flag that we're setting username
       setIsSettingUsername(false);
       // Set flag that user has started chatting (for localStorage persistence)
@@ -755,7 +672,7 @@ export default function Home() {
 
           try {
             // Try to send via socket first if we're in socket mode (same as regular messages)
-            const socketSent = sendMessageViaSocket(localMessage);
+            const socketSent = sendSocketMessage(localMessage);
 
             if (socketSent) {
               console.log('🚀 ✅ Selected question sent via socket');
@@ -842,37 +759,9 @@ export default function Home() {
     setNewMessage(e.target.value);
   };
 
-  // Add a status indicator for the connection mode
-  const renderConnectionStatus = () => {
-    const socketConnected = isSocketConnected();
-
-    if (socketConnected && username && !isChatMinimized) {
-      return (
-        <div className="flex items-center text-xs font-bold text-green-400">
-          <div className="mr-1 h-1.5 w-1.5 rounded-full bg-green-400"></div>
-          Live
-        </div>
-      );
-    } else if (usingFallbackMode && !isChatMinimized) {
-      return (
-        <div className="flex items-center text-xs font-bold text-white">
-          <div className="mr-1 h-1.5 w-1.5 rounded-full bg-amber-400"></div>
-          Polling
-        </div>
-      );
-    } else {
-      return (
-        <div className="flex items-center text-xs font-bold text-white">
-          {/* <div className="mr-1 h-1.5 w-1.5 rounded-full bg-red-400"></div>
-          Offline */}
-        </div>
-      );
-    }
-  };
-
   // Add function to delete user channel
-  const handleDeleteChannel = async () => {
-    if (deleteConfirmation !== username) {
+  const handleDeleteChannel = async (confirmationText: string) => {
+    if (confirmationText !== username) {
       setError('Please enter your username correctly to confirm deletion');
       return;
     }
@@ -900,7 +789,6 @@ export default function Home() {
         // Clear channel info
         setUserChannel(null);
         setUserChannelName(null);
-        setDeleteConfirmation('');
         setIsDeletingChannel(false);
 
         // Set a delay before logging out so the user can see the success message
@@ -931,7 +819,7 @@ export default function Home() {
           slackTimestamps.clear();
           setSuccessMessage('');
           setError(null);
-          setIsConnected(false);
+          // setIsConnected(false); // This is now handled by useSocket
           setSelectedQuestion(null);
 
           console.log(
@@ -980,7 +868,7 @@ export default function Home() {
     slackTimestamps.clear();
     setSuccessMessage('');
     setError(null);
-    setIsConnected(false);
+    // setIsConnected(false); // This is now handled by useSocket
     // selectedQuestion will be reset on page reload
 
     console.log('User logged out, cleared session data and disconnected socket');
@@ -1104,563 +992,75 @@ export default function Home() {
     }
   };
 
+  // Get connection status for header
+  const getConnectionStatus = (): 'live' | 'polling' | 'offline' => {
+    const socketConnected = isSocketConnected();
+
+    if (socketConnected && username && !isChatMinimized) {
+      return 'live';
+    } else if (usingFallbackMode && !isChatMinimized) {
+      return 'polling';
+    } else {
+      return 'offline';
+    }
+  };
+
   return (
     <div className="flex min-h-screen flex-col bg-gray-100">
-      <div className="bg-white shadow">
-        <div className="mx-auto max-w-7xl px-4 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <MessageSquare className="h-8 w-8 text-blue-600" />
-              <h1 className="ml-3 text-2xl font-bold text-gray-900">- Chat App -</h1>
-              {!isSettingUsername && localModeOnly && (
-                <span className="ml-3 rounded-full bg-yellow-100 px-2 py-1 text-xs text-yellow-600">
-                  Local Mode Only
-                </span>
-              )}
-              {!isSettingUsername && (
-                <span className="mr-auto ml-3 rounded-full px-2 py-1 text-xs">
-                  {renderConnectionStatus()}
-                </span>
-              )}
-              {!isSettingUsername && userChannelName && (
-                <span className="ml-3 rounded-full bg-blue-100 px-2 py-1 text-xs text-blue-600">
-                  Slack Channel: {userChannelName}
-                </span>
-              )}
-            </div>
-            {!isSettingUsername && (
-              <div className="flex items-center space-x-3">
-                {userChannel ? (
-                  <button
-                    onClick={() => setIsModalOpen(true)}
-                    className="flex cursor-pointer items-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-md transition-colors hover:bg-red-700 focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:outline-none"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="mr-1 h-5 w-5"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                      />
-                    </svg>
-                    Delete Channel
-                  </button>
-                ) : (
-                  <span className="text-sm text-gray-400">No channel created yet</span>
-                )}
-                <div className="flex items-center space-x-2">
-                  <span className="text-sm text-gray-500">Logged in as {username}</span>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      <AppHeader
+        username={username}
+        isSettingUsername={isSettingUsername}
+        localModeOnly={localModeOnly}
+        userChannel={userChannel}
+        userChannelName={userChannelName}
+        connectionStatus={getConnectionStatus()}
+        onDeleteChannel={() => setIsModalOpen(true)}
+      />
 
       {/* Chatbot Window - Fixed position bottom right */}
-      {isChatOpen && (
-        <div
-          ref={chatWindowRef}
-          className={`fixed right-5 z-40 ${isChatMinimized ? 'bottom-0' : 'bottom-5'}`}
-        >
-          <div
-            className={`flex ${isChatMinimized ? 'h-auto' : 'h-[485px]'} w-[405px] flex-col border border-gray-200 bg-white shadow-2xl`}
-          >
-            <div className="bg-chat-primary h-[42px] rounded-t-[12px] px-4 py-3 text-white transition-colors">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center">
-                  <span className="mr-2 text-sm font-bold">Studio Graphene</span>
-                  {isChatMinimized && unreadMessagesCount > 0 && (
-                    <div className="bg-chat-notification mr-2 flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold text-white">
-                      {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}
-                    </div>
-                  )}
-                  {renderConnectionStatus()}
-                </div>
-                <div className="flex justify-between space-x-2">
-                  <button
-                    onClick={e => {
-                      e.stopPropagation();
-                      isChatMinimized ? restoreChat() : minimizeChat();
-                    }}
-                    className={`cursor-pointer text-xs opacity-75 transition-opacity hover:opacity-100 ${!isChatMinimized ? 'mt-2' : ''}`}
-                    title={isChatMinimized ? 'Expand chat' : 'Minimize chat'}
-                  >
-                    <Image
-                      src={
-                        isChatMinimized
-                          ? '/images/icons/explandChatIconArrow.svg'
-                          : '/images/icons/reduceIcon.svg'
-                      }
-                      alt={isChatMinimized ? 'expand' : 'minimize'}
-                      width={16}
-                      height={16}
-                      className="h-3.5 w-3.5"
-                    />
-                  </button>
-                  <button
-                    onClick={e => {
-                      e.stopPropagation();
-                      setIsLogoutModalOpen(true);
-                    }}
-                    className="cursor-pointer text-xs font-bold opacity-75 transition-opacity hover:opacity-100"
-                    title="Logout"
-                  >
-                    <Image
-                      src="/images/icons/closeIcon.svg"
-                      alt="close"
-                      width={16}
-                      height={16}
-                      className="h-3.5 w-3.5"
-                    />
-                  </button>
-                </div>
-              </div>
-            </div>
-            {!isChatMinimized && (
-              <>
-                {isSettingUsername ? (
-                  <div className="bg-chat-primary flex h-full items-center justify-between rounded-b-[12px] p-6">
-                    <div className="h-full w-full text-start">
-                      <h2 className="mb-2 text-lg font-bold">Let&apos;s dive in!</h2>
-                      <p className="t mb-4 w-[266px] text-[40px] leading-[32px]">
-                        Share your details to kick things off.
-                      </p>
-
-                      <form onSubmit={handleSetUsername} className="mt-[78px] space-y-3">
-                        <div>
-                          <label
-                            htmlFor="username"
-                            className="mb-2 block text-left text-[12px] font-bold"
-                          >
-                            Username
-                          </label>
-                          <input
-                            type="text"
-                            id="username"
-                            value={username}
-                            onChange={e => setUsername(e.target.value)}
-                            className="!bg-chat-primary block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm !text-white placeholder-[#ffffff7a] shadow-sm transition-colors focus:outline-none"
-                            placeholder="Enter your username"
-                            autoFocus
-                          />
-                        </div>
-                        <div>
-                          <label
-                            htmlFor="email"
-                            className="mb-2 block text-left text-[12px] font-bold"
-                          >
-                            Email
-                          </label>
-                          <input
-                            type="email"
-                            id="email"
-                            value={email}
-                            onChange={e => setEmail(e.target.value)}
-                            className="!bg-chat-primary block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm !text-white placeholder-[#ffffff7a] shadow-sm transition-colors focus:outline-none"
-                            placeholder="Enter your email"
-                          />
-                        </div>
-                        <button
-                          type="submit"
-                          disabled={!username.trim() || !email.trim()}
-                          className="relative flex max-h-[40px] w-full cursor-pointer items-center justify-end focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          <div className="text-md flex h-[40px] items-center rounded-full bg-white px-6 py-3 font-bold text-black shadow-sm">
-                            send
-                          </div>
-                          <Image
-                            src="/images/icons/redArrowRight.svg"
-                            alt="send arrow"
-                            width={40}
-                            height={40}
-                          />
-                        </button>
-                      </form>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    {/* Messages Area */}
-                    <div className="bg-chat-primary relative flex-1 space-y-2 overflow-y-auto p-3">
-                      {error && (
-                        <div
-                          className="relative rounded border border-yellow-200 bg-yellow-50 px-2 py-1 text-xs text-yellow-700"
-                          role="alert"
-                        >
-                          <span className="block">{error}</span>
-                        </div>
-                      )}
-
-                      {successMessage && (
-                        <div className="relative rounded border border-green-200 bg-green-50 px-2 py-1 text-xs text-green-800">
-                          <span className="block">{successMessage}</span>
-                        </div>
-                      )}
-
-                      {/* Logout Modal - Inside Chat Window */}
-                      {isLogoutModalOpen && (
-                        <div className="bg-chat-modal-overlay absolute inset-0 z-50 flex items-center justify-center">
-                          <div className="relative flex h-[260px] w-[310px] flex-col rounded-lg bg-white p-5 shadow-lg">
-                            <button
-                              onClick={() => setIsLogoutModalOpen(false)}
-                              className="absolute top-2 right-2 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full text-gray-500"
-                            >
-                              <Image
-                                src="/images/icons/closeIconBlack.svg"
-                                alt="close"
-                                width={16}
-                                height={16}
-                                className="h-3.5 w-3.5"
-                              />
-                            </button>
-                            <div className="mt-auto flex flex-col justify-between">
-                              <h3 className="mt-6 mb-3 text-[36px] leading-[32px] !font-[200] tracking-[0] text-gray-700">
-                                Do you want to close the chat?
-                              </h3>
-                              <p className="mr-4 mb-4 text-xs text-gray-600">
-                                If you leave now any messages exchanged during your absence will be
-                                lost when you come back to the chat.
-                              </p>
-                              <div className="mt-[15px] flex space-x-2">
-                                <button
-                                  onClick={confirmLogout}
-                                  className="bg-chat-primary h-[40px] w-full cursor-pointer rounded-full px-3 py-1 text-[20px] font-bold text-white"
-                                >
-                                  close chat
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {messages.map(message => {
-                        // Debug log for message rendering
-                        console.log(
-                          `🎨 RENDERING message - id: ${message.id}, from: ${message.sender}, text: "${message.text}", isFromSlack: ${message.isFromSlack}`,
-                        );
-
-                        return (
-                          <div
-                            key={message.id}
-                            className={`flex ${message.sender === username ? 'justify-end' : 'justify-start'}`}
-                          >
-                            {message.sender !== username && (
-                              <div className="flex-shrink-0">
-                                <Image
-                                  src="/images/sgLogo.svg"
-                                  alt="Studio Graphene Logo"
-                                  width={32}
-                                  height={32}
-                                  className="h-8 w-8"
-                                />
-                              </div>
-                            )}
-                            <div
-                              className={`message-bubble max-w-xs px-3 py-2 text-xs shadow-sm ${
-                                message.sender === username
-                                  ? 'rounded-tl-[20px] rounded-tr-[2px] rounded-br-[20px] rounded-bl-[20px] bg-blue-600 text-white'
-                                  : message.isFromSlack
-                                    ? 'bg-chat-message-area rounded-tl-[2px] rounded-tr-[20px] rounded-br-[20px] rounded-bl-[20px] text-white'
-                                    : 'rounded-tl-[2px] rounded-tr-[20px] rounded-br-[20px] rounded-bl-[20px] border border-gray-200 bg-white text-gray-900'
-                              }`}
-                            >
-                              <div className="mb-1 text-xs font-medium">
-                                {/* {message.sender} */}
-                                {/* {message.isFromSlack && (
-                                  <span className="ml-1 rounded bg-green-200 px-1 text-xs text-green-800">
-                                    Slack
-                                  </span>
-                                )} */}
-                                <span className="text-xs opacity-75">
-                                  {formatDistanceToNow(new Date(message.timestamp), {
-                                    addSuffix: true,
-                                  })}
-                                </span>
-                              </div>
-                              <p className="text-xs break-words whitespace-pre-wrap">
-                                {message.text}
-                              </p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                      <div ref={messagesEndRef} />
-                    </div>
-
-                    {/* Input Section */}
-                    <form
-                      onSubmit={handleSendMessage}
-                      className="bg-chat-primary rounded-b-lg p-5 pb-6"
-                    >
-                      <div className="flex space-x-2">
-                        <input
-                          ref={messageInputRef}
-                          type="text"
-                          value={newMessage}
-                          onChange={handleInputChange}
-                          placeholder="Ask anything here"
-                          className="mr-0 flex-1 rounded-full border border-white !bg-transparent px-3 py-2 text-sm !text-white placeholder-white shadow-sm focus:ring-1 focus:outline-none"
-                          disabled={isLoading}
-                          //disabled={isLoading || !isConnected}
-                        />
-                        <div className="flex items-center space-x-2">
-                          {/* <button
-                            onClick={handleSendMessage}
-                            disabled={isLoading || !newMessage.trim()}
-                            //disabled={isLoading || !newMessage.trim() || !isConnected}
-                            className="rounded bg-blue-500 px-4 py-2 text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-gray-300"
-                          >
-                            {isLoading ? 'Sending...' : 'Send'}
-                          </button> */}
-                          <button
-                            onClick={handleSendMessage}
-                            disabled={isLoading || !newMessage.trim()}
-                            className="relative flex max-h-[40px] w-full cursor-pointer items-center justify-end focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            <Image
-                              src="/images/icons/redArrowRight.svg"
-                              alt="send arrow"
-                              width={40}
-                              height={40}
-                              className="rotate-270"
-                            />
-                          </button>
-                        </div>
-                      </div>
-                      {slackTypingUsers.length > 0 && (
-                        <div className="mt-2 text-xs text-green-600">
-                          <span className="inline-block">
-                            <span className="typing-dot-chat">•</span>
-                            <span className="typing-dot-chat">•</span>
-                            <span className="typing-dot-chat">•</span>
-                          </span>
-                          <span className="ml-1">
-                            {slackTypingUsers.length === 1
-                              ? `${slackTypingUsers[0].name} is typing...`
-                              : `${slackTypingUsers.length} people are typing...`}
-                          </span>
-                        </div>
-                      )}
-                    </form>
-                  </>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      <ChatWindow
+        ref={chatWindowRef}
+        isOpen={isChatOpen}
+        isMinimized={isChatMinimized}
+        unreadMessagesCount={unreadMessagesCount}
+        username={username}
+        email={email}
+        isSettingUsername={isSettingUsername}
+        messages={messages}
+        newMessage={newMessage}
+        isLoading={isLoading}
+        slackTypingUsers={slackTypingUsers}
+        error={error}
+        successMessage={successMessage}
+        isLogoutModalOpen={isLogoutModalOpen}
+        connectionStatus={getConnectionStatus()}
+        onClose={closeChat}
+        onMinimize={minimizeChat}
+        onRestore={restoreChat}
+        onLogout={confirmLogout}
+        onSendMessage={handleSendMessage}
+        onMessageChange={handleInputChange}
+        onSetUsername={handleSetUsername}
+        onCloseLogoutModal={() => setIsLogoutModalOpen(false)}
+        onOpenLogoutModal={() => setIsLogoutModalOpen(true)}
+        messageInputRef={messageInputRef as React.RefObject<HTMLInputElement>}
+        messagesEndRef={messagesEndRef as React.RefObject<HTMLDivElement>}
+      />
 
       {/* Chat Trigger Bar - Fixed at bottom of screen with sliding animation */}
-      {!isChatOpen && (
-        <div className="fixed right-0 bottom-0 left-0 z-30">
-          <div className="font-founders bg-chat-primary h-[36px] overflow-hidden">
-            <div className="sliding-questions flex h-full items-center text-[22px] font-light whitespace-nowrap">
-              {/* First set of questions */}
-              <div
-                className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
-                onClick={() => handleQuestionClick('Can you tell me more about Studio Graphene?')}
-              >
-                <span className="text-[22px]">Can you tell me more about Studio Graphene?</span>
-              </div>
-              <div className="mx-4 flex items-center">
-                <div className="flex h-6 w-6 items-center justify-center rounded-full">
-                  <Image
-                    src="/images/icons/blue.svg"
-                    alt="separator"
-                    className="h-4 w-4"
-                    width={16}
-                    height={16}
-                  />
-                </div>
-              </div>
-              <div
-                className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
-                onClick={() => handleQuestionClick('What AI services do you currently offer?')}
-              >
-                <span className="text-[22px]">What AI services do you currently offer?</span>
-              </div>
-              <div className="mx-4 flex items-center">
-                <div className="flex h-6 w-6 items-center justify-center rounded-full">
-                  <Image
-                    src="/images/icons/green.svg"
-                    alt="separator"
-                    className="h-4 w-4"
-                    width={16}
-                    height={16}
-                  />
-                </div>
-              </div>
-              <div
-                className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
-                onClick={() => handleQuestionClick('What technologies do you use?')}
-              >
-                <span className="text-[22px]">What technologies do you use?</span>
-              </div>
-              <div className="mx-4 flex items-center">
-                <div className="flex h-6 w-6 items-center justify-center rounded-full">
-                  <Image
-                    src="/images/icons/yellow.svg"
-                    alt="separator"
-                    className="h-4 w-4"
-                    width={16}
-                    height={16}
-                  />
-                </div>
-              </div>
-
-              {/* Duplicate set for seamless looping */}
-              <div
-                className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
-                onClick={() => handleQuestionClick('Can you tell me more about Studio Graphene?')}
-              >
-                <span className="text-[22px]">Can you tell me more about Studio Graphene?</span>
-              </div>
-              <div className="mx-4 flex items-center">
-                <div className="flex h-6 w-6 items-center justify-center rounded-full">
-                  <Image
-                    src="/images/icons/pink.svg"
-                    alt="separator"
-                    className="h-4 w-4"
-                    width={16}
-                    height={16}
-                  />
-                </div>
-              </div>
-              <div
-                className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
-                onClick={() => handleQuestionClick('What AI services do you currently offer?')}
-              >
-                <span className="text-[22px]">What AI services do you currently offer?</span>
-              </div>
-              <div className="mx-4 flex items-center">
-                <div className="flex h-6 w-6 items-center justify-center rounded-full">
-                  <Image
-                    src="/images/icons/blue.svg"
-                    alt="separator"
-                    className="h-4 w-4"
-                    width={16}
-                    height={16}
-                  />
-                </div>
-              </div>
-              <div
-                className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
-                onClick={() => handleQuestionClick('What technologies do you use?')}
-              >
-                <span className="text-[22px]">What technologies do you use?</span>
-              </div>
-              <div className="mx-4 flex items-center">
-                <div className="flex h-6 w-6 items-center justify-center rounded-full">
-                  <Image
-                    src="/images/icons/green.svg"
-                    alt="separator"
-                    className="h-4 w-4"
-                    width={16}
-                    height={16}
-                  />
-                </div>
-              </div>
-
-              {/* Third set for extra seamless looping */}
-              <div
-                className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
-                onClick={() => handleQuestionClick('Can you tell me more about Studio Graphene?')}
-              >
-                <span className="text-[22px]">Can you tell me more about Studio Graphene?</span>
-              </div>
-              <div className="mx-4 flex items-center">
-                <div className="flex h-6 w-6 items-center justify-center rounded-full">
-                  <Image
-                    src="/images/icons/yellow.svg"
-                    alt="separator"
-                    className="h-4 w-4"
-                    width={16}
-                    height={16}
-                  />
-                </div>
-              </div>
-              <div
-                className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
-                onClick={() => handleQuestionClick('What AI services do you currently offer?')}
-              >
-                <span className="text-[22px]">What AI services do you currently offer?</span>
-              </div>
-              <div className="mx-4 flex items-center">
-                <div className="flex h-6 w-6 items-center justify-center rounded-full">
-                  <Image
-                    src="/images/icons/pink.svg"
-                    alt="separator"
-                    className="h-4 w-4"
-                    width={16}
-                    height={16}
-                  />
-                </div>
-              </div>
-              <div
-                className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
-                onClick={() => handleQuestionClick('What technologies do you use?')}
-              >
-                <span className="text-[22px]">What technologies do you use?</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {!isChatOpen && <QuestionBar onQuestionClick={handleQuestionClick} />}
 
       {/* Socket Debug Component */}
       <SocketDebug />
 
       {/* Delete Channel Modal */}
-      {isModalOpen && (
-        <div className="bg-chat-modal-overlay fixed inset-0 z-50 flex items-center justify-center">
-          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
-            <h3 className="mb-4 text-lg font-bold text-red-600">Delete Channel Confirmation</h3>
-            <p className="mb-4">
-              Are you sure you want to delete your Slack channel? This action cannot be undone.
-            </p>
-            <p className="mb-2 text-sm text-gray-600">
-              <strong>Important:</strong> Deleting your channel will also log you out of the
-              application.
-            </p>
-            <p className="mb-4 text-sm text-gray-600">
-              Please type your username <strong>{username}</strong> to confirm deletion:
-            </p>
-            <input
-              type="text"
-              value={deleteConfirmation}
-              onChange={e => setDeleteConfirmation(e.target.value)}
-              className="mb-4 w-full rounded border border-gray-300 p-2"
-              placeholder="Enter your username to confirm"
-            />
-            <div className="flex justify-end space-x-2">
-              <button
-                onClick={() => {
-                  setIsModalOpen(false);
-                  setDeleteConfirmation('');
-                }}
-                className="rounded bg-gray-300 px-4 py-2 hover:bg-gray-400"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDeleteChannel}
-                disabled={isDeletingChannel || deleteConfirmation !== username}
-                className="bg-chat-notification hover:bg-chat-notification-hover disabled:bg-chat-notification-disabled rounded px-4 py-2 text-white"
-              >
-                {isDeletingChannel ? 'Deleting...' : 'Confirm Delete & Logout'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <DeleteChannelModal
+        isOpen={isModalOpen}
+        username={username}
+        isDeleting={isDeletingChannel}
+        onClose={() => setIsModalOpen(false)}
+        onConfirm={handleDeleteChannel}
+      />
     </div>
   );
 }
