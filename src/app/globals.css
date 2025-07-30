@@ -7,6 +7,15 @@
   --input-text: #171717;
   --input-border: #e5e7eb;
   --input-focus: #3b82f6;
+
+  /* Chat application colors */
+  --chat-primary: #262525;
+  --chat-modal-overlay: #05050599;
+  --chat-message-area: #454545;
+  --chat-notification: #ef4444;
+  --chat-notification-hover: #dc2626;
+  --chat-notification-disabled: #fca5a5;
+  --chat-text-placeholder: #ffffff7a;
 }
 
 @theme inline {
@@ -15,6 +24,15 @@
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --font-founders: var(--font-founders-grotesk);
+
+  /* Chat application colors available as utilities */
+  --color-chat-primary: var(--chat-primary);
+  --color-chat-modal-overlay: var(--chat-modal-overlay);
+  --color-chat-message-area: var(--chat-message-area);
+  --color-chat-notification: var(--chat-notification);
+  --color-chat-notification-hover: var(--chat-notification-hover);
+  --color-chat-notification-disabled: var(--chat-notification-disabled);
+  --color-chat-text-placeholder: var(--chat-text-placeholder);
 }
 
 @media (prefers-color-scheme: dark) {

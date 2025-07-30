@@ -1172,15 +1172,12 @@ export default function Home() {
           <div
             className={`flex ${isChatMinimized ? 'h-auto' : 'h-[485px]'} w-[405px] flex-col border border-gray-200 bg-white shadow-2xl`}
           >
-            <div
-              className="h-[42px] cursor-pointer rounded-t-[12px] bg-black px-4 py-3 text-white transition-colors"
-              title={isChatMinimized ? 'Click to restore chat' : 'Click to close chat'}
-            >
+            <div className="bg-chat-primary h-[42px] rounded-t-[12px] px-4 py-3 text-white transition-colors">
               <div className="flex items-center justify-between">
                 <div className="flex items-center">
                   <span className="mr-2 text-sm font-bold">Studio Graphene</span>
                   {isChatMinimized && unreadMessagesCount > 0 && (
-                    <div className="mr-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">
+                    <div className="bg-chat-notification mr-2 flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold text-white">
                       {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}
                     </div>
                   )}
@@ -1229,7 +1226,7 @@ export default function Home() {
             {!isChatMinimized && (
               <>
                 {isSettingUsername ? (
-                  <div className="flex h-full items-center justify-between rounded-b-[12px] bg-[#262525] p-6">
+                  <div className="bg-chat-primary flex h-full items-center justify-between rounded-b-[12px] p-6">
                     <div className="h-full w-full text-start">
                       <h2 className="mb-2 text-lg font-bold">Let&apos;s dive in!</h2>
                       <p className="t mb-4 w-[266px] text-[40px] leading-[32px]">
@@ -1249,7 +1246,7 @@ export default function Home() {
                             id="username"
                             value={username}
                             onChange={e => setUsername(e.target.value)}
-                            className="block w-full rounded-lg border border-gray-300 !bg-[#262525] px-3 py-2 text-sm !text-white placeholder-[#ffffff7a] shadow-sm transition-colors focus:outline-none"
+                            className="!bg-chat-primary block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm !text-white placeholder-[#ffffff7a] shadow-sm transition-colors focus:outline-none"
                             placeholder="Enter your username"
                             autoFocus
                           />
@@ -1266,7 +1263,7 @@ export default function Home() {
                             id="email"
                             value={email}
                             onChange={e => setEmail(e.target.value)}
-                            className="block w-full rounded-lg border border-gray-300 !bg-[#262525] px-3 py-2 text-sm !text-white placeholder-[#ffffff7a] shadow-sm transition-colors focus:outline-none"
+                            className="!bg-chat-primary block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm !text-white placeholder-[#ffffff7a] shadow-sm transition-colors focus:outline-none"
                             placeholder="Enter your email"
                           />
                         </div>
@@ -1291,7 +1288,7 @@ export default function Home() {
                 ) : (
                   <>
                     {/* Messages Area */}
-                    <div className="relative flex-1 space-y-2 overflow-y-auto bg-[#262525] p-3">
+                    <div className="bg-chat-primary relative flex-1 space-y-2 overflow-y-auto p-3">
                       {error && (
                         <div
                           className="relative rounded border border-yellow-200 bg-yellow-50 px-2 py-1 text-xs text-yellow-700"
@@ -1309,7 +1306,7 @@ export default function Home() {
 
                       {/* Logout Modal - Inside Chat Window */}
                       {isLogoutModalOpen && (
-                        <div className="absolute inset-0 z-50 flex items-center justify-center bg-[#05050599]">
+                        <div className="bg-chat-modal-overlay absolute inset-0 z-50 flex items-center justify-center">
                           <div className="relative flex h-[260px] w-[310px] flex-col rounded-lg bg-white p-5 shadow-lg">
                             <button
                               onClick={() => setIsLogoutModalOpen(false)}
@@ -1334,7 +1331,7 @@ export default function Home() {
                               <div className="mt-[15px] flex space-x-2">
                                 <button
                                   onClick={confirmLogout}
-                                  className="h-[40px] w-full cursor-pointer rounded-full bg-black px-3 py-1 text-[20px] font-bold text-white"
+                                  className="bg-chat-primary h-[40px] w-full cursor-pointer rounded-full px-3 py-1 text-[20px] font-bold text-white"
                                 >
                                   close chat
                                 </button>
@@ -1371,7 +1368,7 @@ export default function Home() {
                                 message.sender === username
                                   ? 'rounded-tl-[20px] rounded-tr-[2px] rounded-br-[20px] rounded-bl-[20px] bg-blue-600 text-white'
                                   : message.isFromSlack
-                                    ? 'rounded-tl-[2px] rounded-tr-[20px] rounded-br-[20px] rounded-bl-[20px] bg-[#454545] text-white'
+                                    ? 'bg-chat-message-area rounded-tl-[2px] rounded-tr-[20px] rounded-br-[20px] rounded-bl-[20px] text-white'
                                     : 'rounded-tl-[2px] rounded-tr-[20px] rounded-br-[20px] rounded-bl-[20px] border border-gray-200 bg-white text-gray-900'
                               }`}
                             >
@@ -1401,7 +1398,7 @@ export default function Home() {
                     {/* Input Section */}
                     <form
                       onSubmit={handleSendMessage}
-                      className="rounded-b-lg bg-[#262525] p-5 pb-6"
+                      className="bg-chat-primary rounded-b-lg p-5 pb-6"
                     >
                       <div className="flex space-x-2">
                         <input
@@ -1464,7 +1461,7 @@ export default function Home() {
       {/* Chat Trigger Bar - Fixed at bottom of screen with sliding animation */}
       {!isChatOpen && (
         <div className="fixed right-0 bottom-0 left-0 z-30">
-          <div className="font-founders h-[36px] overflow-hidden bg-[#262525]">
+          <div className="font-founders bg-chat-primary h-[36px] overflow-hidden">
             <div className="sliding-questions flex h-full items-center text-[22px] font-light whitespace-nowrap">
               {/* First set of questions */}
               <div
@@ -1623,7 +1620,7 @@ export default function Home() {
 
       {/* Delete Channel Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#05050599]">
+        <div className="bg-chat-modal-overlay fixed inset-0 z-50 flex items-center justify-center">
           <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
             <h3 className="mb-4 text-lg font-bold text-red-600">Delete Channel Confirmation</h3>
             <p className="mb-4">
@@ -1656,7 +1653,7 @@ export default function Home() {
               <button
                 onClick={handleDeleteChannel}
                 disabled={isDeletingChannel || deleteConfirmation !== username}
-                className="rounded bg-red-500 px-4 py-2 text-white hover:bg-red-600 disabled:bg-red-300"
+                className="bg-chat-notification hover:bg-chat-notification-hover disabled:bg-chat-notification-disabled rounded px-4 py-2 text-white"
               >
                 {isDeletingChannel ? 'Deleting...' : 'Confirm Delete & Logout'}
               </button>
