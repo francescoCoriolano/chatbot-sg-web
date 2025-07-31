@@ -19,21 +19,19 @@ const SEPARATORS = [
 ];
 
 export function QuestionBar({ onQuestionClick, className = '' }: QuestionBarProps) {
-  const renderQuestionSet = (startIndex: number) => (
+  const renderQuestionSet = (setIndex: number = 0) => (
     <>
       {QUESTIONS.map((question, index) => {
-        const actualIndex = (startIndex + index) % QUESTIONS.length;
-        const separatorIndex = (startIndex + index) % SEPARATORS.length;
+        const separatorIndex = index % SEPARATORS.length;
 
         return (
-          <div key={`${startIndex}-${index}`} className="flex items-center">
+          <div key={`${setIndex}-${index}`} className="flex items-center">
             <div
               className="inline-flex flex-shrink-0 cursor-pointer items-center px-6 text-center transition-colors hover:bg-gray-800"
               onClick={() => onQuestionClick(question)}
             >
               <span className="text-[22px]">{question}</span>
             </div>
-            {/* {index < QUESTIONS.length - 1 && ( */}
             <div className="mx-4 flex items-center">
               <div className="flex h-6 w-6 items-center justify-center rounded-full">
                 <Image
@@ -45,7 +43,6 @@ export function QuestionBar({ onQuestionClick, className = '' }: QuestionBarProp
                 />
               </div>
             </div>
-            {/* )} */}
           </div>
         );
       })}
@@ -56,10 +53,9 @@ export function QuestionBar({ onQuestionClick, className = '' }: QuestionBarProp
     <div className={`fixed right-0 bottom-0 left-0 z-30 ${className}`}>
       <div className="font-founders bg-chat-primary h-[36px] overflow-hidden">
         <div className="sliding-questions flex h-full items-center text-[22px] font-light whitespace-nowrap">
-          {/* Render multiple sets for seamless looping */}
+          {/* Render the same set twice for seamless looping */}
           {renderQuestionSet(0)}
           {renderQuestionSet(1)}
-          {renderQuestionSet(2)}
         </div>
       </div>
     </div>

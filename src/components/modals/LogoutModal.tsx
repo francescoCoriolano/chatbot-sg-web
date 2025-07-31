@@ -10,7 +10,7 @@ export function LogoutModal({ isOpen, onClose, onConfirm }: LogoutModalProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="bg-chat-modal-overlay absolute inset-0 z-50 flex items-center justify-center">
+    <div className="bg-chat-modal-overlay absolute inset-0 z-50 flex items-center justify-center rounded-[12px]">
       <div className="relative flex h-[260px] w-[310px] flex-col rounded-lg bg-white p-5 shadow-lg">
         <button
           onClick={onClose}

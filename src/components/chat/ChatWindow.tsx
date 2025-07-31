@@ -107,7 +107,7 @@ export const ChatWindow = forwardRef<HTMLDivElement, ChatWindowProps>(
         className={`fixed right-5 ${isMinimized ? 'bottom-0' : 'bottom-5'} z-50 rounded-[12px]`}
       >
         <div
-          className={`flex ${isMinimized ? 'h-auto' : 'h-[485px]'} w-[405px] flex-col border border-gray-200 bg-white shadow-2xl`}
+          className={`flex ${isMinimized ? 'h-auto' : 'h-[485px]'} w-[405px] flex-col rounded-t-[12px] border border-gray-200 bg-white shadow-2xl`}
         >
           {/* Chat Header */}
           <div className="bg-chat-primary h-[42px] rounded-t-[12px] px-4 py-3 text-white transition-colors">
@@ -226,7 +226,10 @@ export const ChatWindow = forwardRef<HTMLDivElement, ChatWindowProps>(
                   </div>
 
                   {/* Input Section */}
-                  <form onSubmit={onSendMessage} className="bg-chat-primary rounded-b-lg p-5 pb-6">
+                  <form
+                    onSubmit={onSendMessage}
+                    className="bg-chat-primary rounded-b-[12px] p-5 pb-6"
+                  >
                     <div className="flex space-x-2">
                       <input
                         ref={messageInputRef}
