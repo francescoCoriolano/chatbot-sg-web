@@ -102,7 +102,10 @@ export const ChatWindow = forwardRef<HTMLDivElement, ChatWindowProps>(
     };
 
     return (
-      <div ref={ref} className="fixed right-5 bottom-5 z-50 rounded-[12px]">
+      <div
+        ref={ref}
+        className={`fixed right-5 ${isMinimized ? 'bottom-0' : 'bottom-5'} z-50 rounded-[12px]`}
+      >
         <div
           className={`flex ${isMinimized ? 'h-auto' : 'h-[485px]'} w-[405px] flex-col border border-gray-200 bg-white shadow-2xl`}
         >
@@ -143,7 +146,17 @@ export const ChatWindow = forwardRef<HTMLDivElement, ChatWindowProps>(
                 <button
                   onClick={e => {
                     e.stopPropagation();
-                    onOpenLogoutModal();
+                    if (isMinimized) {
+                      // First restore the chat window, then open modal
+                      onRestore();
+                      // Use setTimeout to ensure the restore happens first
+                      setTimeout(() => {
+                        onOpenLogoutModal();
+                      }, 0);
+                    } else {
+                      // Chat is already expanded, just open modal
+                      onOpenLogoutModal();
+                    }
                   }}
                   className="cursor-pointer text-xs font-bold opacity-75 transition-opacity hover:opacity-100"
                   title="Close chat"
@@ -163,6 +176,13 @@ export const ChatWindow = forwardRef<HTMLDivElement, ChatWindowProps>(
           {/* Chat Content */}
           {!isMinimized && (
             <>
+              {/* Logout Modal - Cover entire chat content */}
+              <LogoutModal
+                isOpen={isLogoutModalOpen}
+                onClose={onCloseLogoutModal}
+                onConfirm={onLogout}
+              />
+
               {isSettingUsername ? (
                 <UserSetupForm
                   initialUsername={username}
@@ -187,13 +207,6 @@ export const ChatWindow = forwardRef<HTMLDivElement, ChatWindowProps>(
                         <span className="block">{successMessage}</span>
                       </div>
                     )}
-
-                    {/* Logout Modal - Inside Chat Window */}
-                    <LogoutModal
-                      isOpen={isLogoutModalOpen}
-                      onClose={onCloseLogoutModal}
-                      onConfirm={onLogout}
-                    />
 
                     {messages.map(message => {
                       // Debug log for message rendering

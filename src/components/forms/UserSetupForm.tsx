@@ -62,7 +62,7 @@ export function UserSetupForm({
           <button
             type="submit"
             disabled={!username.trim() || !email.trim()}
-            className="relative flex max-h-[40px] w-full cursor-pointer items-center justify-end focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+            className="relative ml-auto flex max-h-[40px] cursor-pointer items-center justify-end focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
           >
             <div className="text-md flex h-[40px] items-center rounded-full bg-white px-6 py-3 font-bold text-black shadow-sm">
               send

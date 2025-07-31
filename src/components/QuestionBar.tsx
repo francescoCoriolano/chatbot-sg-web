@@ -33,19 +33,19 @@ export function QuestionBar({ onQuestionClick, className = '' }: QuestionBarProp
             >
               <span className="text-[22px]">{question}</span>
             </div>
-            {index < QUESTIONS.length - 1 && (
-              <div className="mx-4 flex items-center">
-                <div className="flex h-6 w-6 items-center justify-center rounded-full">
-                  <Image
-                    src={SEPARATORS[separatorIndex]}
-                    alt="separator"
-                    className="h-4 w-4"
-                    width={16}
-                    height={16}
-                  />
-                </div>
+            {/* {index < QUESTIONS.length - 1 && ( */}
+            <div className="mx-4 flex items-center">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full">
+                <Image
+                  src={SEPARATORS[separatorIndex]}
+                  alt="separator"
+                  className="h-4 w-4"
+                  width={16}
+                  height={16}
+                />
               </div>
-            )}
+            </div>
+            {/* )} */}
           </div>
         );
       })}
